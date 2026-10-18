@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "75725063723",
+    "project_id": "instaclone-usth",
+    "storage_bucket": "instaclone-usth.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:75725063723:android:34e617ea5fa6a2d0224c6e",
+        "android_client_info": {
+          "package_name": "vn.edu.usth.instaclone"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCZYgI22ndheWruWCs_XzXgMb_QTTe-mqI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
