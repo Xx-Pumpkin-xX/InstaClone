@@ -46,6 +46,7 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     testImplementation(libs.junit)
+    testImplementation("org.mockito:mockito-core:5.12.0")
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -59,5 +60,4 @@ dependencies {
     implementation(libs.kotlinx.coroutines.play.services)
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.compose.material.icons.core)
-    implementation(libs.androidx.lifecycle.viewmodel.compose)
 }

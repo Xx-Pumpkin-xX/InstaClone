@@ -61,7 +61,9 @@ fun AppNavHost() {
                 PlaceholderScreen("S-08 Search", owner = "Trang . T-26")
             }
             composable(Routes.NEW_POST) {
-                PlaceholderScreen("S-04 New post", owner = "Nam . T-13")
+                vn.edu.usth.instaclone.ui.post.NewPostScreen(
+                    onNavigateBack = { navController.popBackStack() }
+                )
             }
             composable(Routes.CHAT_LIST) {
                 ConversationListScreen(
