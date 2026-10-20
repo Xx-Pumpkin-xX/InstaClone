@@ -13,5 +13,5 @@ data class User (
     val postCount: Long = 0,
     val followerCount: Long = 0,
     val followingCount: Long = 0,
-    @ServerTimestamp val createAt: Timestamp? = null,
+    @ServerTimestamp val createdAt: Timestamp? = null,
 )
