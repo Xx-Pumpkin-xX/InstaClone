@@ -13,8 +13,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import vn.edu.usth.instaclone.data.repository.FakeImageStorage
-import vn.edu.usth.instaclone.data.repository.FakePostRepository
+import vn.edu.usth.instaclone.data.AppContainer
 import vn.edu.usth.instaclone.data.repository.ImageStorage
 import vn.edu.usth.instaclone.data.repository.PostRepository
 import vn.edu.usth.instaclone.util.ImageCompressor
@@ -132,8 +131,8 @@ class NewPostViewModel(
     }
 
     class Factory(
-        private val imageStorage: ImageStorage = FakeImageStorage(),
-        private val postRepository: PostRepository = FakePostRepository()
+        private val imageStorage: ImageStorage = AppContainer.imageStorage,
+        private val postRepository: PostRepository = AppContainer.postRepository
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {

@@ -29,7 +29,6 @@ fun AppNavHost() {
     val showBottomBar = bottomTabs.any {it.route == currentRoute}
     val startRoute = remember {
         if (AppContainer.authRepository.currentUserId.value != null) Routes.HOME else Routes.LOGIN
-        // Routes.HOME (TẠM ĐỂ TEST CHAT VÌ CHƯA CÓ TẢI KHOẢN DEMO)
     }
     Scaffold(
         bottomBar = {if (showBottomBar) BottomBar(navController, currentRoute)},
