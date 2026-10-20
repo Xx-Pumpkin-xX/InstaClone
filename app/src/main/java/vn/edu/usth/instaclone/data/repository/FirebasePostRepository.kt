@@ -28,7 +28,7 @@ class FirebasePostRepository : PostRepository {
         return snapshot.toObjects(Post::class.java)
     }
 
-    override suspend fun followFeedPage(after: Post?, limit: Int): List<Post> {
+    override suspend fun followingFeedPage(after: Post?, limit: Int): List<Post> {
         val currentUser = auth.currentUser ?: return emptyList()
         val followingSnapshot = db.collection("users")
             .document(currentUser.uid)
