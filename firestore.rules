@@ -1,0 +1,88 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function owner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    //username chữ thường, số, dấu gạch dưới
+    //dài 3–20 ký tự
+    function validUsername(username) {
+      return username is string
+      && username.matches('^[a-z0-9_]{3,20}$');
+    }
+
+    function validUser(data) {
+      return data.keys().hasAll
+      ([
+        'username', 'displayName', 'bio', 'avatarUrl',
+        'postCount', 'followerCount', 'followingCount',
+        'createdAt'
+      ])
+
+      && data.keys().hasOnly
+      ([
+        'username', 'displayName', 'bio', 'avatarUrl',
+        'postCount', 'followerCount', 'followingCount',
+        'createdAt'
+      ])
+
+      && validUsername(data.username)
+      && data.displayName is string
+      && data.bio is string
+      && data.avatarUrl is string
+      && data.postCount is int
+      && data.followerCount is int
+      && data.followingCount is int
+      && data.postCount >= 0
+      && data.followerCount >= 0
+      && data.followingCount >= 0
+      && data.createdAt is timestamp;
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn();
+
+      allow create: if owner(uid)
+      && validUser(request.resource.data)
+      && request.resource.data.postCount == 0
+      && request.resource.data.followerCount == 0
+      && request.resource.data.followingCount == 0
+      && request.resource.data.createdAt == request.time
+      && getAfter(
+        /databases/$(database)/documents/usernames/$(request.resource.data.username)
+      ).data.uid == uid;
+
+      //Chỉ nhánh chỉnh sửa hồ sơ
+      //Các nhánh counter sẽ bổ sung riêng
+      allow update: if owner(uid)
+      && validUser(request.resource.data)
+      && request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(['displayName', 'bio', 'avatarUrl']);
+
+      allow delete: if false;
+    }
+
+    match /usernames/{username} {
+      allow read: if signedIn();
+
+      allow create: if signedIn()
+      && validUsername(username)
+      && request.resource.data.keys().hasAll(['uid'])
+      && request.resource.data.keys().hasOnly(['uid'])
+      && request.resource.data.uid is string
+      && request.resource.data.uid == request.auth.uid
+      && getAfter(
+        /databases/$(database)/documents/users/$(request.auth.uid)
+      ).data.username == username;
+
+      allow update, delete: if false;
+    }
+  }
+}
