@@ -5,15 +5,16 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import vn.edu.usth.instaclone.data.AppContainer
 import vn.edu.usth.instaclone.data.model.Post
 import vn.edu.usth.instaclone.data.repository.FakePostRepository
 import vn.edu.usth.instaclone.data.repository.PostRepository
 import vn.edu.usth.instaclone.data.repository.LikeRepository
 import vn.edu.usth.instaclone.data.repository.FakeLikeRepository
 class HomeFeedViewModel(
-    private val postRepo: PostRepository = FakePostRepository(),
+    private val postRepo: PostRepository = AppContainer.postRepository,
     private val likeRepo: LikeRepository = FakeLikeRepository(),
-    ) : ViewModel() {
+) : ViewModel() {
 
     private val _posts = MutableStateFlow<List<Post>>(emptyList())
     val posts: StateFlow<List<Post>> = _posts
