@@ -14,3 +14,6 @@
 .cxx
 local.properties
 /.idea/
+
+# Node.js dependencies (restore with npm ci)
+node_modules/
