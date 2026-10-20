@@ -113,4 +113,20 @@ class FakePostRepository : PostRepository {
         delay(400)
         posts.removeAll { it.id == postId }
     }
+
+    override suspend fun likePost(postId: String) {
+        delay(300)
+        val index = posts.indexOfFirst { it.id == postId }
+        if (index != -1) {
+            posts[index] = posts[index].copy(likeCount = posts[index].likeCount + 1)
+        }
+    }
+
+    override suspend fun unlikePost(postId: String) {
+        delay(300)
+        val index = posts.indexOfFirst { it.id == postId }
+        if (index != -1) {
+            posts[index] = posts[index].copy(likeCount = maxOf(0L, posts[index].likeCount - 1))
+        }
+    }
 }
