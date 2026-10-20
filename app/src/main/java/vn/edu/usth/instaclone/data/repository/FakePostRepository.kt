@@ -21,7 +21,7 @@ class FakePostRepository : PostRepository {
                 caption = "Welcome to InstaClone!",
                 likeCount = 12,
                 commentCount = 3,
-                createAt = Timestamp.now()
+                createdAt = Timestamp.now()
             )
         )
     }
@@ -31,7 +31,7 @@ class FakePostRepository : PostRepository {
         return posts.take(limit)
     }
 
-    override suspend fun followFeedPage(after: Post?, limit: Int): List<Post> {
+    override suspend fun followingFeedPage(after: Post?, limit: Int): List<Post> {
         delay(300)
         return posts.take(limit)
     }
@@ -59,7 +59,7 @@ class FakePostRepository : PostRepository {
             caption = caption,
             likeCount = 0,
             commentCount = 0,
-            createAt = Timestamp.now()
+            createdAt = Timestamp.now()
         )
         posts.add(0, newPost)
         return newPostId

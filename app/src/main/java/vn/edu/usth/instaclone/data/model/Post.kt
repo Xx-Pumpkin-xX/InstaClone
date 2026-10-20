@@ -14,5 +14,5 @@ data class Post (
     val caption: String = "",
     val likeCount: Long = 0,
     val commentCount: Long = 0,
-    @ServerTimestamp val createAt: Timestamp? = null,
+    @ServerTimestamp val createdAt: Timestamp? = null,
 )

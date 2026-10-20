@@ -1,97 +1,59 @@
 # InstaClone
 
-An Instagram-style Android app for the USTH Mobile Application Development final project.
-Members sign up, post photos, browse a feed, like, comment, follow each other and chat one-to-one.
+An Instagram-style Android app for the USTH Mobile Application Development final project: sign up, post photos, browse a feed, like, comment, follow and chat one-to-one.
 
-**Demo target: Saturday 24 Oct 2026.**
+**Tasks, owners, progress and requirements:** [team docs](https://claude.ai/artifact/VyGpjeybkqDMoTTGyg3wz3) (see the **Work split** tab). This README only covers the code.
 
-## Tech stack
-
-| Part | What we use |
-|---|---|
-| Language / UI | Kotlin, Jetpack Compose (Material 3) |
-| Architecture | MVVM: Screen → ViewModel → Repository interface |
-| Accounts | Firebase Authentication (email + password) |
-| Data | Cloud Firestore |
-| Photos | Cloud Storage for Firebase |
-| Min Android | 8.0 (API 26) |
-
-## Run it on your machine
+## Run it
 
 1. Android Studio → **File → New → Project from Version Control** → paste this repo's URL → **Clone**.
-2. Wait for the first Gradle sync to finish (a few minutes the first time).
-3. Pick an emulator and press **Run ▶**.
+2. Wait for Gradle sync, pick an emulator, press **Run ▶**.
 
-`google-services.json` is already in `app/`, so Firebase works with no extra setup.
-If the sync fails, check that you have the latest Android Studio, then ask in the group chat before changing anything.
+`google-services.json` is already in `app/`, so Firebase works with no setup.
+
+**Stack:** Kotlin, Jetpack Compose (Material 3), MVVM, Firebase Auth + Firestore + Storage. Min Android 8.0 (API 26).
 
 ## Where things go
 
 ```
 app/src/main/java/vn/edu/usth/instaclone/
 ├── data/
-│   ├── model/        Data classes: User, Post, Comment, Conversation, Message
-│   └── repository/   Interfaces + their Fake and Firebase versions
-├── ui/
-│   ├── auth/         Login, Register          (Member 2, Phong)
-│   ├── feed/         Home feed, post detail   (Member 4)
-│   ├── post/         New post                 (Nam)
-│   ├── profile/      Profile, edit profile    (Member 5, Nam)
-│   ├── search/       Search users             (Member 5)
-│   ├── chat/         Conversations, chat      (Member 6)
-│   └── theme/        Colors, typography
-└── MainActivity.kt
+│   ├── AppContainer.kt   One line per repository: Fake or Firebase
+│   ├── model/            User, Post, Comment, Conversation, Message
+│   └── repository/       Interfaces  (fake/ and firebase/ hold the versions)
+└── ui/
+    ├── navigation/       Routes, bottom bar, AppNavHost
+    ├── auth/  feed/  post/  profile/  search/  chat/   One folder per feature
+    └── common/  theme/
 ```
 
-Work mainly inside **your own** `ui/<feature>/` folder. That keeps merge conflicts rare.
+## Adding your feature
 
-## How we build features
+1. Write a fake of your repository in `data/repository/fake/` that returns hard-coded data.
+2. Register it in `AppContainer.kt`: `val postRepository: PostRepository by lazy { FakePostRepository() }`
+3. Build your screen in `ui/<feature>/`, copying the pattern of `ui/auth/LoginScreen.kt` + `LoginViewModel.kt`.
+4. In `AppNavHost.kt`, replace **only your own** `PlaceholderScreen(...)` with your screen.
+5. Write the Firebase version in `data/repository/firebase/` and change that one line in `AppContainer`.
 
-1. Screens only talk to a **repository interface** in `data/repository/`, never to Firebase directly.
-2. First write a **fake** of your interface (`FakePostRepository`, …) that returns hard-coded data, and build your screens with it.
-3. Then write the **Firebase** version (`FirebasePostRepository`, …). Swapping the fake for the real one changes no screen code.
+Screens talk only to repository interfaces, never to Firebase directly. Don't rename fields in `data/model/`: Firestore matches them by name.
 
-Field names in `data/model/` match the Firestore data model in the requirements docs (SRS section 4). Firestore matches fields by name, so **don't rename fields** without telling the team.
+## Git workflow
 
-## Team rules
+1. `Git → Pull` on `master`.
+2. New branch: `feature/T-xx-short-name`.
+3. Code, run, test. Commit with the task ID: `T-18: add pull to refresh`.
+   ⚠️ Tick **Unversioned Files** in the commit panel, or your new files stay behind.
+4. Push, open a Pull Request, merge, then `Git → Pull` on `master` again.
 
-**Branches**
-- `master` must always build and run. Never push broken code to it.
-- Work on your own branch: `feature/T-13-create-post` (task ID + short name).
-- When it works, open a Pull Request to `master` and ask one teammate to check it.
-
-**Commits**
-- Start every message with the task ID: `T-18: add pull to refresh to home feed`.
-- Small commits, often. The course grades commit messages.
-
-**Pull before you start each day**
-- `Git → Pull` on `master`, then merge `master` into your branch, so you build on everyone's latest work.
-
-**Don't**
-- Don't commit `local.properties`, `build/` or `.idea/` (the `.gitignore` already hides them).
-- Don't update library versions in `gradle/libs.versions.toml` on your own. One mismatch breaks everyone's build.
-- Don't change an interface in `data/repository/` without telling the person who owns it.
-
-## Tasks and deadlines
-
-Tasks (T-01 … T-34), owners and status live in the **Work split** tab of the requirements docs.
-
-| Date | Milestone |
-|---|---|
-| Sun 18 Oct | Kick-off: everyone can clone and run |
-| Mon 19 Oct | App shell, seed data, security rules |
-| Wed 21 Oct | Core loop works: register → log in → post → feed → like |
-| Thu 22 Oct | All Must features done |
-| Fri 23 Oct | Feature freeze: everything works, bug fixes only after this |
-| Sat 24 Oct | Ready to demo |
+**Never** commit on `master` directly, change `libs.versions.toml` versions, or edit someone else's interface without telling them.
 
 ## Team
 
 | Member | Area |
 |---|---|
-| Phong | Foundation: project setup, app shell, login, log out |
-| Member 2 | Accounts and security |
+| Phong | Foundation, login, log out |
+| Đạt | Register and security rules |
 | Nam | Posting and media |
-| Member 4 | Feed, likes, comments |
-| Member 5 | Profiles, follow, search |
-| Member 6 | Chat and demo |
+| Trâm | Feed, likes, comments |
+| Trang | Profiles, follow, search |
+| Thịnh | Chat and demo |
