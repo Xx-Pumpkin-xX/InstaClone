@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_no_internet">No internet connection</string>
+    <string name="home_like">Like</string>
+    <string name="home_comments">%1$d comments</string>
+</resources>

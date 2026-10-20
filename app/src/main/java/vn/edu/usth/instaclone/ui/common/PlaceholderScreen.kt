@@ -25,7 +25,7 @@ fun PlaceholderScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
     ){
         Text(title, style = MaterialTheme.typography.headlineSmall)
-        Text("Comming soon . $owner", style = MaterialTheme.typography.bodyMedium)
+        Text("Coming soon . $owner", style = MaterialTheme.typography.bodyMedium)
         actions()
     }
 }

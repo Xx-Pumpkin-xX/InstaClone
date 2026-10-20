@@ -12,6 +12,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import vn.edu.usth.instaclone.ui.common.PlaceholderScreen
+import vn.edu.usth.instaclone.ui.home.HomeFeedScreen
 import androidx.compose.runtime.remember
 import vn.edu.usth.instaclone.data.AppContainer
 import vn.edu.usth.instaclone.ui.auth.LoginScreen
@@ -28,7 +29,6 @@ fun AppNavHost() {
     val showBottomBar = bottomTabs.any {it.route == currentRoute}
     val startRoute = remember {
         if (AppContainer.authRepository.currentUserId.value != null) Routes.HOME else Routes.LOGIN
-        // Routes.HOME (TẠM ĐỂ TEST CHAT VÌ CHƯA CÓ TẢI KHOẢN DEMO)
     }
     Scaffold(
         bottomBar = {if (showBottomBar) BottomBar(navController, currentRoute)},
@@ -52,10 +52,9 @@ fun AppNavHost() {
                 PlaceholderScreen("S-02 Register", owner = "Dat . T-09")
             }
             composable(Routes.HOME) {
-                PlaceholderScreen("S-03 Home feed", owner = "Tram . T-18") {
-                    Button(onClick = {navController.navigate(Routes.postDetail("demo-post"))}) {Text("Open a post")}
-                    Button(onClick = {navController.navigate(Routes.profile("demo-user"))}) {Text("Open a profile")}
-                }
+                    HomeFeedScreen(
+                        onPostClick = { postId -> navController.navigate(Routes.postDetail(postId)) },
+                    )
             }
             composable(Routes.SEARCH) {
                 PlaceholderScreen("S-08 Search", owner = "Trang . T-26")
