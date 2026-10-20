@@ -6,6 +6,6 @@ interface AuthRepository {
     val currentUserId: StateFlow<String?>
     suspend fun signUp(email: String, username: String, password: String)
     suspend fun signIn(email: String, password: String)
-    fun SignOut()
+    fun signOut()
     suspend fun sendPasswordReset(email: String)
 }
