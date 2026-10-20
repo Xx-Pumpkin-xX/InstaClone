@@ -1,0 +1,149 @@
+import { readFileSync } from 'node:fs';
+import {
+  initializeTestEnvironment,
+  assertSucceeds,
+  assertFails
+} from '@firebase/rules-unit-testing';
+
+import {
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  writeBatch,
+  serverTimestamp
+} from 'firebase/firestore';
+
+import {
+  before,
+  beforeEach,
+  after,
+  describe,
+  it
+} from 'mocha';
+
+let env;
+
+function newUser(username) {
+  return {
+    username,
+    displayName: username,
+    bio: '',
+    avatarUrl: '',
+    postCount: 0,
+    followerCount: 0,
+    followingCount: 0,
+    createdAt: serverTimestamp()
+  };
+}
+
+async function register(db, uid, username) {
+  const batch = writeBatch(db);
+
+  batch.set(doc(db, 'users', uid), newUser(username));
+  batch.set(doc(db, 'usernames', username), { uid });
+
+  return batch.commit();
+}
+
+before(async () => {
+  env = await initializeTestEnvironment({
+    projectId: 'demo-instaclone',
+    firestore: {
+      host: '127.0.0.1',
+      port: 8080,
+      rules: readFileSync(
+        new URL('../../firestore.rules', import.meta.url),
+        'utf8'
+      )
+    }
+  });
+});
+
+beforeEach(async () => {
+  await env.clearFirestore();
+});
+
+after(async () => {
+  await env.cleanup();
+});
+
+describe('Users and usernames', () => {
+  it('allow creating profile and claim together', async () => {
+    const db = env.authenticatedContext('alice').firestore();
+
+    await assertSucceeds(register(db, 'alice', 'alice'));
+  });
+
+  it('deny creating profile without claim', async () => {
+    const db = env.authenticatedContext('alice').firestore();
+
+    await assertFails(
+      setDoc(doc(db, 'users', 'alice'), newUser('alice'))
+    );
+  });
+
+  it('deny creating profile for other', async () => {
+    const db = env.authenticatedContext('alice').firestore();
+
+    await assertFails(register(db, 'bob', 'bob'));
+  });
+
+  it('guest can not read profile', async () => {
+    const alice = env.authenticatedContext('alice').firestore();
+    await register(alice, 'alice', 'alice');
+
+    const guest = env.unauthenticatedContext().firestore();
+
+    await assertFails(getDoc(doc(guest, 'users', 'alice')));
+  });
+
+  it('member can read other profile', async () => {
+    const alice = env.authenticatedContext('alice').firestore();
+    await register(alice, 'alice', 'alice');
+
+    const bob = env.authenticatedContext('bob').firestore();
+
+    await assertSucceeds(getDoc(doc(bob, 'users', 'alice')));
+  });
+
+  it('owner can update bio', async () => {
+    const db = env.authenticatedContext('alice').firestore();
+    await register(db, 'alice', 'alice');
+
+    await assertSucceeds(
+      updateDoc(doc(db, 'users', 'alice'), { bio: 'Hello' })
+    );
+  });
+
+  it('can not update other profile', async () => {
+    const alice = env.authenticatedContext('alice').firestore();
+    await register(alice, 'alice', 'alice');
+
+    const bob = env.authenticatedContext('bob').firestore();
+
+    await assertFails(
+      updateDoc(doc(bob, 'users', 'alice'), { bio: 'Changed' })
+    );
+  });
+
+  it('can not change counter', async () => {
+    const db = env.authenticatedContext('alice').firestore();
+    await register(db, 'alice', 'alice');
+
+    await assertFails(
+      updateDoc(doc(db, 'users', 'alice'), {
+        followerCount: 999
+      })
+    );
+  });
+
+  it('cant not claim already username', async () => {
+    const alice = env.authenticatedContext('alice').firestore();
+    await register(alice, 'alice', 'alice');
+
+    const bob = env.authenticatedContext('bob').firestore();
+
+    await assertFails(register(bob, 'bob', 'alice'));
+  });
+});
