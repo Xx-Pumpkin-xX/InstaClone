@@ -1,0 +1,44 @@
+rules_version = '2';
+
+service firebase.storage{
+  match /b/{bucket}/o{
+
+    function signedIn(){
+      return request.auth != null;
+    }
+
+    function owner(uid){
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function validImage(){
+      return request.resource.size > 0
+      && request.resource.size <= 1024 * 1024
+      && (request.resource.contentType == 'image/jpeg' || request.resource.contentType == 'image/png');
+    }
+
+    match /images/posts/{uid}/{fileName} {
+      allow read: if signedIn();
+
+      // Metadata checks only: cannot inspect or scan uploaded bytes.
+      allow create, update: if owner(uid)
+        && ((fileName.matches('^[A-Za-z0-9_-]+[.]jpg$') && request.resource.contentType == 'image/jpeg')
+          || (fileName.matches('^[A-Za-z0-9_-]+[.]png$') && request.resource.contentType == 'image/png'))
+        && validImage();
+
+      allow delete: if owner(uid);
+    }
+
+    match /images/avatars/{fileName} {
+      allow read: if signedIn();
+
+      allow create, update: if signedIn()
+      && ((fileName == request.auth.uid + '.jpg' && request.resource.contentType == 'image/jpeg')
+        || (fileName == request.auth.uid + '.png' && request.resource.contentType == 'image/png'))
+      && validImage();
+
+      allow delete: if signedIn()
+        && (fileName == request.auth.uid + '.jpg' || fileName == request.auth.uid + '.png');
+    }
+  }
+}

@@ -15,6 +15,8 @@ import vn.edu.usth.instaclone.ui.common.PlaceholderScreen
 import androidx.compose.runtime.remember
 import vn.edu.usth.instaclone.data.AppContainer
 import vn.edu.usth.instaclone.ui.auth.LoginScreen
+import vn.edu.usth.instaclone.ui.chat.ChatScreen
+import vn.edu.usth.instaclone.ui.chat.ConversationListScreen
 
 @Composable
 fun AppNavHost() {
@@ -26,6 +28,7 @@ fun AppNavHost() {
     val showBottomBar = bottomTabs.any {it.route == currentRoute}
     val startRoute = remember {
         if (AppContainer.authRepository.currentUserId.value != null) Routes.HOME else Routes.LOGIN
+        // Routes.HOME (TẠM ĐỂ TEST CHAT VÌ CHƯA CÓ TẢI KHOẢN DEMO)
     }
     Scaffold(
         bottomBar = {if (showBottomBar) BottomBar(navController, currentRoute)},
@@ -63,7 +66,9 @@ fun AppNavHost() {
                 )
             }
             composable(Routes.CHAT_LIST) {
-                PlaceholderScreen("S-09 Message", owner = "Thine . T-29")
+                ConversationListScreen(
+                    onOpenChat = { userId -> navController.navigate(Routes.chat(userId)) },
+                )
             }
             composable(Routes.MY_PROFILE) {
                 PlaceholderScreen("S-06 My profile", owner = "Trang . T-23") {
@@ -92,7 +97,10 @@ fun AppNavHost() {
             }
             composable(Routes.CHAT) { entry ->
                 val userId = entry.arguments?.getString("userId") ?: ""
-                PlaceholderScreen("S-10 Chat with $userId", owner = "Thine . T-30")
+                ChatScreen(
+                    otherUserId = userId,
+                    onBack = { navController.popBackStack() },
+                )
             }
         }
     }
