@@ -12,6 +12,9 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import vn.edu.usth.instaclone.ui.common.PlaceholderScreen
+import androidx.compose.runtime.remember
+import vn.edu.usth.instaclone.data.AppContainer
+import vn.edu.usth.instaclone.ui.auth.LoginScreen
 
 @Composable
 fun AppNavHost() {
@@ -21,24 +24,26 @@ fun AppNavHost() {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     val showBottomBar = bottomTabs.any {it.route == currentRoute}
-
+    val startRoute = remember {
+        if (AppContainer.authRepository.currentUserId.value != null) Routes.HOME else Routes.LOGIN
+    }
     Scaffold(
         bottomBar = {if (showBottomBar) BottomBar(navController, currentRoute)},
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = Routes.LOGIN,
+            startDestination = startRoute,
             modifier = Modifier.padding(innerPadding),
         ) {
             composable(Routes.LOGIN) {
-                PlaceholderScreen("S-01 Login", owner = "Phong . T-10") {
-                    Button(onClick = {
+                LoginScreen(
+                    onLoggedIn = {
                         navController.navigate(Routes.HOME) {
                             popUpTo(Routes.LOGIN) {inclusive = true}
                         }
-                    }) { Text("Skip login (temporary)") }
-                    Button(onClick = {navController.navigate(Routes.REGISTER)}) { Text("Go to Register") }
-                }
+                    },
+                    onCreateAccount = {navController.navigate(Routes.REGISTER)},
+                )
             }
             composable(Routes.REGISTER) {
                 PlaceholderScreen("S-02 Register", owner = "Dat . T-09")
@@ -61,6 +66,12 @@ fun AppNavHost() {
             composable(Routes.MY_PROFILE) {
                 PlaceholderScreen("S-06 My profile", owner = "Trang . T-23") {
                     Button(onClick = {navController.navigate(Routes.EDIT_PROFILE)}) {Text("Edit profile")}
+                    Button(onClick = {
+                        AppContainer.authRepository.signOut()
+                        navController.navigate(Routes.LOGIN) {
+                            popUpTo(navController.graph.id) {inclusive = true}
+                        }
+                    }) {Text("Log out (temporary")}
                 }
             }
             //----------Opened from other screens----------//
