@@ -53,7 +53,9 @@ fun AppNavHost() {
                 PlaceholderScreen("S-08 Search", owner = "Trang . T-26")
             }
             composable(Routes.NEW_POST) {
-                PlaceholderScreen("S-04 New post", owner = "Nam . T-13")
+                vn.edu.usth.instaclone.ui.post.NewPostScreen(
+                    onNavigateBack = { navController.popBackStack() }
+                )
             }
             composable(Routes.CHAT_LIST) {
                 PlaceholderScreen("S-09 Message", owner = "Thine . T-29")
@@ -77,7 +79,7 @@ fun AppNavHost() {
             composable(Routes.EDIT_PROFILE) {
                 PlaceholderScreen("S-07 Edit profile", owner = "Nam . T-15")
             }
-            composable(Routes.POST_DETAIL) { entry ->
+            composable(Routes.CHAT) { entry ->
                 val userId = entry.arguments?.getString("userId") ?: ""
                 PlaceholderScreen("S-10 Chat with $userId", owner = "Thine . T-30")
             }
