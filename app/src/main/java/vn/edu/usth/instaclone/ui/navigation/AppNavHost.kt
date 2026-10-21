@@ -13,6 +13,9 @@ import androidx.navigation.compose.rememberNavController
 import vn.edu.usth.instaclone.ui.common.PlaceholderScreen
 import vn.edu.usth.instaclone.ui.home.HomeFeedScreen
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import vn.edu.usth.instaclone.data.AppContainer
 import vn.edu.usth.instaclone.ui.auth.ForgotPasswordScreen
 import vn.edu.usth.instaclone.ui.auth.LoginScreen
@@ -21,6 +24,8 @@ import vn.edu.usth.instaclone.ui.chat.ChatScreen
 import vn.edu.usth.instaclone.ui.chat.ConversationListScreen
 import vn.edu.usth.instaclone.ui.profile.ProfileScreen
 import vn.edu.usth.instaclone.ui.post.PostDetailScreen
+import vn.edu.usth.instaclone.ui.auth.LogoutDialog
+
 @Composable
 fun AppNavHost() {
     val navController = rememberNavController()
@@ -30,6 +35,12 @@ fun AppNavHost() {
     val currentRoute = backStackEntry?.destination?.route
     val showBottomBar = bottomTabs.any {it.route == currentRoute}
     val currentUserId by AppContainer.authRepository.currentUserId.collectAsState()
+    val logOut: () -> Unit = {
+        AppContainer.authRepository.signOut()
+        navController.navigate(Routes.LOGIN) {
+            popUpTo(navController.graph.id) {inclusive = true}
+        }
+    }
     val startRoute = remember {
         if (AppContainer.authRepository.currentUserId.value != null) Routes.HOME else Routes.LOGIN
     }
@@ -70,7 +81,7 @@ fun AppNavHost() {
             composable(Routes.HOME) {
                     HomeFeedScreen(
                         onPostClick = { postId -> navController.navigate(Routes.postDetail(postId)) },
-                        onAuthorClick = { uid -> navController.navigate(Routes.profile(uid)) },
+                        onAuthorClick = {uid -> navController.navigate(Routes.profile(uid))},
                     )
             }
             composable(Routes.SEARCH) {
@@ -78,7 +89,12 @@ fun AppNavHost() {
             }
             composable(Routes.NEW_POST) {
                 vn.edu.usth.instaclone.ui.post.NewPostScreen(
-                    onNavigateBack = { navController.popBackStack() }
+                    onNavigateBack = {
+                        navController.navigate(Routes.HOME) {
+                            popUpTo(Routes.HOME) { saveState = true }
+                            launchSingleTop = true
+                        }
+                    }
                 )
             }
             composable(Routes.CHAT_LIST) {
@@ -87,18 +103,20 @@ fun AppNavHost() {
                 )
             }
             composable(Routes.MY_PROFILE) {
+                var showLogout by rememberSaveable { mutableStateOf(false) }
                 currentUserId?.let { myId ->
                     ProfileScreen(
                         userId = myId,
                         showBack = false,
                         onEditProfile = { navController.navigate(Routes.EDIT_PROFILE) },
-                        onLogOut = {
-                            AppContainer.authRepository.signOut()
-                            navController.navigate(Routes.LOGIN) {
-                                popUpTo(navController.graph.id) {inclusive = true}
-                            }
-                        },
-                        onPostClick = { postId -> navController.navigate(Routes.postDetail(postId)) },
+                        onLogOut = {showLogout = true},
+                        onPostClick = {postId -> navController.navigate(Routes.postDetail(postId))},
+                    )
+                }
+                if (showLogout) {
+                    LogoutDialog(
+                        onConfirm = {showLogout = false; logOut()},
+                        onDismiss = {showLogout = false},
                     )
                 }
             }
@@ -112,20 +130,22 @@ fun AppNavHost() {
             }
             composable(Routes.PROFILE) { entry ->
                 val userId = entry.arguments?.getString("userId") ?: ""
+                var showLogout by rememberSaveable{mutableStateOf(false)}
                 ProfileScreen(
                     userId = userId,
                     showBack = true,
                     onBack = { navController.popBackStack() },
                     onEditProfile = { navController.navigate(Routes.EDIT_PROFILE) },
-                    onLogOut = {
-                        AppContainer.authRepository.signOut()
-                        navController.navigate(Routes.LOGIN) {
-                            popUpTo(navController.graph.id) {inclusive = true}
-                        }
-                    },
+                    onLogOut = {showLogout = true},
                     onPostClick = { postId -> navController.navigate(Routes.postDetail(postId)) },
                     onMessage = { uid -> navController.navigate(Routes.chat(uid)) },
                 )
+                if (showLogout) {
+                    LogoutDialog(
+                        onConfirm = {showLogout = false; logOut()},
+                        onDismiss = {showLogout = false},
+                    )
+                }
             }
             composable(Routes.EDIT_PROFILE) {
                 PlaceholderScreen("S-07 Edit profile", owner = "Nam . T-15")

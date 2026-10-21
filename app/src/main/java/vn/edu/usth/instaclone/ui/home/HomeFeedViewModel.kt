@@ -7,13 +7,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import vn.edu.usth.instaclone.data.AppContainer
 import vn.edu.usth.instaclone.data.model.Post
-import vn.edu.usth.instaclone.data.repository.FakeLikeRepository
-import vn.edu.usth.instaclone.data.repository.LikeRepository
+import vn.edu.usth.instaclone.data.repository.FakePostRepository
 import vn.edu.usth.instaclone.data.repository.PostRepository
-
+import vn.edu.usth.instaclone.data.repository.LikeRepository
+import vn.edu.usth.instaclone.data.repository.FakeLikeRepository
 class HomeFeedViewModel(
     private val postRepo: PostRepository = AppContainer.postRepository,
-    private val likeRepo: LikeRepository = AppContainer.likeRepository,
+    private val likeRepo: LikeRepository = FakeLikeRepository(),
 ) : ViewModel() {
 
     private val _posts = MutableStateFlow<List<Post>>(emptyList())
@@ -25,21 +25,21 @@ class HomeFeedViewModel(
     private val _isLoadingMore = MutableStateFlow(false)
     val isLoadingMore: StateFlow<Boolean> = _isLoadingMore
 
-    // Bài nào mình đã tim (lưu id)
-    private val _likedPostIds = MutableStateFlow<Set<String>>(emptySet())
-    val likedPostIds: StateFlow<Set<String>> = _likedPostIds
-
-    // Thông báo lỗi (null = không có lỗi)
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage
 
     private var endReached = false
 
+    // bài nào mình đã tim (lưu id)
+    private val _likedPostIds = MutableStateFlow<Set<String>>(emptySet())
+    val likedPostIds: StateFlow<Set<String>> = _likedPostIds
+
+    // thông báo lỗi (null = không có lỗi)
+
     init {
         refresh()
     }
 
-    // Tải lại từ đầu
     fun refresh() {
         viewModelScope.launch {
             _isRefreshing.value = true
@@ -48,14 +48,29 @@ class HomeFeedViewModel(
                 _posts.value = firstPage
                 endReached = firstPage.size < PAGE_SIZE
             } catch (e: Exception) {
-                _errorMessage.value = "Couldn't load the feed. Please try again."
+                _errorMessage.value = "Couldn't load feed"
             } finally {
                 _isRefreshing.value = false
             }
         }
     }
 
-    // Tải thêm 10 bài, nối vào cuối danh sách
+    // T-14: Delete own post
+    fun deletePost(postId: String) {
+        viewModelScope.launch {
+            try {
+                postRepo.deletePost(postId)
+                _posts.value = _posts.value.filter { it.id != postId }
+            } catch (e: Exception) {
+                _errorMessage.value = "Couldn't delete the post"
+            }
+        }
+    }
+
+    fun clearError() {
+        _errorMessage.value = null
+    }
+
     fun loadMore() {
         if (_isRefreshing.value || _isLoadingMore.value || endReached) return
         viewModelScope.launch {
@@ -65,26 +80,26 @@ class HomeFeedViewModel(
                 _posts.value = _posts.value + nextPage
                 endReached = nextPage.size < PAGE_SIZE
             } catch (e: Exception) {
-                _errorMessage.value = "Couldn't load more posts."
+                _errorMessage.value = "Couldn't load more posts"
             } finally {
                 _isLoadingMore.value = false
             }
         }
     }
 
-    fun clearError() {
-        _errorMessage.value = null
-    }
 
     // Cộng hoặc trừ số like của 1 bài (them = 1 là tăng, them = -1 là giảm)
     private fun doiSoLike(postId: String, them: Long) {
-        _posts.value = _posts.value.map { post ->
+        val danhSachMoi = mutableListOf<Post>()
+        for (post in _posts.value) {
             if (post.id == postId) {
-                post.copy(likeCount = (post.likeCount + them).coerceAtLeast(0))
+
+                danhSachMoi.add(post.copy(likeCount = post.likeCount + them))
             } else {
-                post
+                danhSachMoi.add(post)
             }
         }
+        _posts.value = danhSachMoi
     }
 
     fun toggleLike(postId: String) {
@@ -99,10 +114,14 @@ class HomeFeedViewModel(
             doiSoLike(postId, 1)
         }
 
-        // Bước 2: báo cho server (qua LikeRepository)
+        // Bước 2: báo cho server
         viewModelScope.launch {
             try {
-                likeRepo.setLiked(postId, !daLike)
+                if (daLike) {
+                    postRepo.unlikePost(postId)
+                } else {
+                    postRepo.likePost(postId)
+                }
             } catch (e: Exception) {
                 // Bước 3: server lỗi thì trả về như cũ
                 if (daLike) {
@@ -113,18 +132,6 @@ class HomeFeedViewModel(
                     doiSoLike(postId, -1)
                 }
                 _errorMessage.value = "Couldn't update your like. Please try again."
-            }
-        }
-    }
-    fun syncCounts() {
-        viewModelScope.launch {
-            try {
-                _posts.value = _posts.value.map { p ->
-                    val fresh = postRepo.getPost(p.id)
-                    if (fresh != null) p.copy(commentCount = fresh.commentCount) else p
-                }
-            } catch (e: Exception) {
-                // bỏ qua, lần sau cập nhật
             }
         }
     }

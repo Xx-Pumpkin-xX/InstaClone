@@ -94,6 +94,7 @@ fun NewPostScreen(
     LaunchedEffect(uiState) {
         when (val state = uiState) {
             is NewPostUiState.Success -> {
+                viewModel.clearError()
                 onNavigateBack()
             }
             is NewPostUiState.Error -> {

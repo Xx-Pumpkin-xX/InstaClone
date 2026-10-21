@@ -76,7 +76,7 @@ class NewPostViewModel(
 
             // Step 2: Upload photo to Firebase Storage
             _uiState.value = NewPostUiState.Uploading()
-            val imageUrl = try {
+            val uploadedUrl = try {
                 withContext(Dispatchers.IO) {
                     imageStorage.upload(storagePath, compressedBytes)
                 }
@@ -85,7 +85,10 @@ class NewPostViewModel(
                 return@launch
             }
 
-            // Step 3: Save post to Firestore
+            // Preserve local URI in fake mode so user sees their actual picked photo on Home feed
+            val imageUrl = if (uploadedUrl.contains("picsum.photos")) uri.toString() else uploadedUrl
+
+            // Step 3: Save post to Firestore / Repository
             _uiState.value = NewPostUiState.Saving()
             try {
                 withContext(Dispatchers.IO) {
@@ -95,9 +98,12 @@ class NewPostViewModel(
                         caption = _caption.value.trim()
                     )
                 }
+                // Reset form and notify success
+                _selectedUri.value = null
+                _caption.value = ""
                 _uiState.value = NewPostUiState.Success
             } catch (e: Exception) {
-                // If saving fails, attempt to delete uploaded photo cleanup
+                // If saving fails, attempt cleanup
                 withContext(Dispatchers.IO) {
                     try { imageStorage.delete(storagePath) } catch (_: Exception) {}
                 }
