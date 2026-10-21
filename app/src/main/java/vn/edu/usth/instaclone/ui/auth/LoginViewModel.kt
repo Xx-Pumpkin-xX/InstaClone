@@ -1,7 +1,6 @@
 package vn.edu.usth.instaclone.ui.auth
 
 import android.util.Patterns
-import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.FirebaseNetworkException

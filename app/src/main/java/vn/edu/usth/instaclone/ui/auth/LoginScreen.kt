@@ -23,7 +23,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import java.nio.file.WatchEvent
 
 /**
  * S-01 Login (UC-02). Draws the state; sends clicks to the ViewModel.

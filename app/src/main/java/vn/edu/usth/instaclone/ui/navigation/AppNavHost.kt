@@ -12,11 +12,14 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import vn.edu.usth.instaclone.ui.common.PlaceholderScreen
+import vn.edu.usth.instaclone.ui.home.HomeFeedScreen
 import androidx.compose.runtime.remember
 import vn.edu.usth.instaclone.data.AppContainer
 import vn.edu.usth.instaclone.ui.auth.ForgotPasswordScreen
 import vn.edu.usth.instaclone.ui.auth.LoginScreen
 import vn.edu.usth.instaclone.ui.auth.RegisterScreen
+import vn.edu.usth.instaclone.ui.chat.ChatScreen
+import vn.edu.usth.instaclone.ui.chat.ConversationListScreen
 
 @Composable
 fun AppNavHost() {
@@ -64,19 +67,22 @@ fun AppNavHost() {
                 )
             }
             composable(Routes.HOME) {
-                PlaceholderScreen("S-03 Home feed", owner = "Tram . T-18") {
-                    Button(onClick = {navController.navigate(Routes.postDetail("demo-post"))}) {Text("Open a post")}
-                    Button(onClick = {navController.navigate(Routes.profile("demo-user"))}) {Text("Open a profile")}
-                }
+                    HomeFeedScreen(
+                        onPostClick = { postId -> navController.navigate(Routes.postDetail(postId)) },
+                    )
             }
             composable(Routes.SEARCH) {
                 PlaceholderScreen("S-08 Search", owner = "Trang . T-26")
             }
             composable(Routes.NEW_POST) {
-                PlaceholderScreen("S-04 New post", owner = "Nam . T-13")
+                vn.edu.usth.instaclone.ui.post.NewPostScreen(
+                    onNavigateBack = { navController.popBackStack() }
+                )
             }
             composable(Routes.CHAT_LIST) {
-                PlaceholderScreen("S-09 Message", owner = "Thine . T-29")
+                ConversationListScreen(
+                    onOpenChat = { userId -> navController.navigate(Routes.chat(userId)) },
+                )
             }
             composable(Routes.MY_PROFILE) {
                 PlaceholderScreen("S-06 My profile", owner = "Trang . T-23") {
@@ -103,9 +109,12 @@ fun AppNavHost() {
             composable(Routes.EDIT_PROFILE) {
                 PlaceholderScreen("S-07 Edit profile", owner = "Nam . T-15")
             }
-            composable(Routes.POST_DETAIL) { entry ->
+            composable(Routes.CHAT) { entry ->
                 val userId = entry.arguments?.getString("userId") ?: ""
-                PlaceholderScreen("S-10 Chat with $userId", owner = "Thine . T-30")
+                ChatScreen(
+                    otherUserId = userId,
+                    onBack = { navController.popBackStack() },
+                )
             }
         }
     }
