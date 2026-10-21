@@ -94,11 +94,8 @@ fun NewPostScreen(
     LaunchedEffect(uiState) {
         when (val state = uiState) {
             is NewPostUiState.Success -> {
-                snackbarHostState.showSnackbar(
-                    message = "Post published successfully!",
-                    duration = SnackbarDuration.Short
-                )
                 viewModel.clearError()
+                onNavigateBack()
             }
             is NewPostUiState.Error -> {
                 val result = snackbarHostState.showSnackbar(

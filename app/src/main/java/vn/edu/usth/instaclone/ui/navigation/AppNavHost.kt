@@ -69,7 +69,8 @@ fun AppNavHost() {
             }
             composable(Routes.HOME) {
                     HomeFeedScreen(
-                        onPostClick = { postId -> navController.navigate(Routes.postDetail(postId)) }
+                        onPostClick = { postId -> navController.navigate(Routes.postDetail(postId)) },
+                        onAuthorClick = {uid -> navController.navigate(Routes.profile(uid))},
                     )
             }
             composable(Routes.SEARCH) {
