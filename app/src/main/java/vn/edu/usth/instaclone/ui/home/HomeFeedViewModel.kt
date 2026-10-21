@@ -22,32 +22,59 @@ class HomeFeedViewModel(
     private val _isLoadingMore = MutableStateFlow(false)
     val isLoadingMore: StateFlow<Boolean> = _isLoadingMore
 
+    private val _errorMessage = MutableStateFlow<String?>(null)
+    val errorMessage: StateFlow<String?> = _errorMessage
+
     private var endReached = false
 
     init {
         refresh()
     }
 
-    // Tải lại từ đầu
     fun refresh() {
         viewModelScope.launch {
             _isRefreshing.value = true
-            val firstPage = postRepo.feedPage(after = null, limit = PAGE_SIZE)
-            _posts.value = firstPage
-            endReached = firstPage.size < PAGE_SIZE
-            _isRefreshing.value = false
+            try {
+                val firstPage = postRepo.feedPage(after = null, limit = PAGE_SIZE)
+                _posts.value = firstPage
+                endReached = firstPage.size < PAGE_SIZE
+            } catch (e: Exception) {
+                _errorMessage.value = "Couldn't load feed"
+            } finally {
+                _isRefreshing.value = false
+            }
         }
     }
 
-    // Tải thêm 10 bài, nối vào cuối danh sách
+    // T-14: Delete own post
+    fun deletePost(postId: String) {
+        viewModelScope.launch {
+            try {
+                postRepo.deletePost(postId)
+                _posts.value = _posts.value.filter { it.id != postId }
+            } catch (e: Exception) {
+                _errorMessage.value = "Couldn't delete the post"
+            }
+        }
+    }
+
+    fun clearError() {
+        _errorMessage.value = null
+    }
+
     fun loadMore() {
         if (_isRefreshing.value || _isLoadingMore.value || endReached) return
         viewModelScope.launch {
             _isLoadingMore.value = true
-            val nextPage = postRepo.feedPage(after = _posts.value.lastOrNull(), limit = PAGE_SIZE)
-            _posts.value = _posts.value + nextPage
-            endReached = nextPage.size < PAGE_SIZE
-            _isLoadingMore.value = false
+            try {
+                val nextPage = postRepo.feedPage(after = _posts.value.lastOrNull(), limit = PAGE_SIZE)
+                _posts.value = _posts.value + nextPage
+                endReached = nextPage.size < PAGE_SIZE
+            } catch (e: Exception) {
+                _errorMessage.value = "Couldn't load more posts"
+            } finally {
+                _isLoadingMore.value = false
+            }
         }
     }
 

@@ -61,7 +61,12 @@ fun AppNavHost() {
             }
             composable(Routes.NEW_POST) {
                 vn.edu.usth.instaclone.ui.post.NewPostScreen(
-                    onNavigateBack = { navController.popBackStack() }
+                    onNavigateBack = {
+                        navController.navigate(Routes.HOME) {
+                            popUpTo(Routes.HOME) { saveState = true }
+                            launchSingleTop = true
+                        }
+                    }
                 )
             }
             composable(Routes.CHAT_LIST) {
