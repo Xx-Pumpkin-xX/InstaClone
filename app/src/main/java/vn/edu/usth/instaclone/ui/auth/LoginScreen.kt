@@ -34,6 +34,7 @@ import java.nio.file.WatchEvent
 fun LoginScreen(
     onLoggedIn: () -> Unit,
     onCreateAccount: () -> Unit,
+    onForgotPassword: () -> Unit,
     viewModel: LoginViewModel = viewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -60,6 +61,11 @@ fun LoginScreen(
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
             modifier = Modifier.fillMaxWidth(),
         )
+        TextButton(
+            onClick = onForgotPassword,
+            enabled = !state.isLoading,
+            modifier = Modifier.align(Alignment.Start)
+        ) { Text("Forgot password?") }
         state.errorMessage?.let {message ->
             Text(message, color = MaterialTheme.colorScheme.error)
         }
