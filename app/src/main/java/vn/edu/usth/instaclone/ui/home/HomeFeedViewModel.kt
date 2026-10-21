@@ -25,6 +25,9 @@ class HomeFeedViewModel(
     private val _isLoadingMore = MutableStateFlow(false)
     val isLoadingMore: StateFlow<Boolean> = _isLoadingMore
 
+    private val _errorMessage = MutableStateFlow<String?>(null)
+    val errorMessage: StateFlow<String?> = _errorMessage
+
     private var endReached = false
 
     // bài nào mình đã tim (lưu id)
@@ -32,33 +35,35 @@ class HomeFeedViewModel(
     val likedPostIds: StateFlow<Set<String>> = _likedPostIds
 
     // thông báo lỗi (null = không có lỗi)
-    private val _errorMessage = MutableStateFlow<String?>(null)
-    val errorMessage: StateFlow<String?> = _errorMessage
 
     init {
         refresh()
     }
 
-    // Tải lại từ đầu
     fun refresh() {
         viewModelScope.launch {
             _isRefreshing.value = true
-            val firstPage = postRepo.feedPage(after = null, limit = PAGE_SIZE)
-            _posts.value = firstPage
-            endReached = firstPage.size < PAGE_SIZE
-            _isRefreshing.value = false
+            try {
+                val firstPage = postRepo.feedPage(after = null, limit = PAGE_SIZE)
+                _posts.value = firstPage
+                endReached = firstPage.size < PAGE_SIZE
+            } catch (e: Exception) {
+                _errorMessage.value = "Couldn't load feed"
+            } finally {
+                _isRefreshing.value = false
+            }
         }
     }
 
-    // Tải thêm 10 bài, nối vào cuối danh sách
-    fun loadMore() {
-        if (_isRefreshing.value || _isLoadingMore.value || endReached) return
+    // T-14: Delete own post
+    fun deletePost(postId: String) {
         viewModelScope.launch {
-            _isLoadingMore.value = true
-            val nextPage = postRepo.feedPage(after = _posts.value.lastOrNull(), limit = PAGE_SIZE)
-            _posts.value = _posts.value + nextPage
-            endReached = nextPage.size < PAGE_SIZE
-            _isLoadingMore.value = false
+            try {
+                postRepo.deletePost(postId)
+                _posts.value = _posts.value.filter { it.id != postId }
+            } catch (e: Exception) {
+                _errorMessage.value = "Couldn't delete the post"
+            }
         }
     }
 
@@ -66,12 +71,29 @@ class HomeFeedViewModel(
         _errorMessage.value = null
     }
 
+    fun loadMore() {
+        if (_isRefreshing.value || _isLoadingMore.value || endReached) return
+        viewModelScope.launch {
+            _isLoadingMore.value = true
+            try {
+                val nextPage = postRepo.feedPage(after = _posts.value.lastOrNull(), limit = PAGE_SIZE)
+                _posts.value = _posts.value + nextPage
+                endReached = nextPage.size < PAGE_SIZE
+            } catch (e: Exception) {
+                _errorMessage.value = "Couldn't load more posts"
+            } finally {
+                _isLoadingMore.value = false
+            }
+        }
+    }
+
+
     // Cộng hoặc trừ số like của 1 bài (them = 1 là tăng, them = -1 là giảm)
     private fun doiSoLike(postId: String, them: Long) {
         val danhSachMoi = mutableListOf<Post>()
         for (post in _posts.value) {
             if (post.id == postId) {
-                
+
                 danhSachMoi.add(post.copy(likeCount = post.likeCount + them))
             } else {
                 danhSachMoi.add(post)

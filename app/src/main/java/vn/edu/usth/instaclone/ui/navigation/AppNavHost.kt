@@ -69,8 +69,7 @@ fun AppNavHost() {
             }
             composable(Routes.HOME) {
                     HomeFeedScreen(
-                        onPostClick = { postId -> navController.navigate(Routes.postDetail(postId)) },
-                        onAuthorClick = { uid -> navController.navigate(Routes.profile(uid)) },
+                        onPostClick = { postId -> navController.navigate(Routes.postDetail(postId)) }
                     )
             }
             composable(Routes.SEARCH) {
@@ -78,7 +77,12 @@ fun AppNavHost() {
             }
             composable(Routes.NEW_POST) {
                 vn.edu.usth.instaclone.ui.post.NewPostScreen(
-                    onNavigateBack = { navController.popBackStack() }
+                    onNavigateBack = {
+                        navController.navigate(Routes.HOME) {
+                            popUpTo(Routes.HOME) { saveState = true }
+                            launchSingleTop = true
+                        }
+                    }
                 )
             }
             composable(Routes.CHAT_LIST) {
