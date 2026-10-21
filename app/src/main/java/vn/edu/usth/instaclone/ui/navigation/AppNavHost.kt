@@ -15,7 +15,9 @@ import vn.edu.usth.instaclone.ui.common.PlaceholderScreen
 import vn.edu.usth.instaclone.ui.home.HomeFeedScreen
 import androidx.compose.runtime.remember
 import vn.edu.usth.instaclone.data.AppContainer
+import vn.edu.usth.instaclone.ui.auth.ForgotPasswordScreen
 import vn.edu.usth.instaclone.ui.auth.LoginScreen
+import vn.edu.usth.instaclone.ui.auth.RegisterScreen
 import vn.edu.usth.instaclone.ui.chat.ChatScreen
 import vn.edu.usth.instaclone.ui.chat.ConversationListScreen
 
@@ -46,10 +48,23 @@ fun AppNavHost() {
                         }
                     },
                     onCreateAccount = {navController.navigate(Routes.REGISTER)},
+                    onForgotPassword = { navController.navigate(Routes.FORGOT_PASSWORD) },
                 )
             }
+            composable(Routes.FORGOT_PASSWORD) {
+                ForgotPasswordScreen(onBackToLogin = { navController.popBackStack() })
+            }
             composable(Routes.REGISTER) {
-                PlaceholderScreen("S-02 Register", owner = "Dat . T-09")
+                //S-02 Register, Dat . T-09
+                RegisterScreen(
+                    onRegistered = {
+                        navController.navigate(Routes.HOME) {
+                            popUpTo(Routes.LOGIN) { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    },
+                    onBackToLogin = { navController.popBackStack() }
+                )
             }
             composable(Routes.HOME) {
                     HomeFeedScreen(
