@@ -16,6 +16,7 @@ import vn.edu.usth.instaclone.ui.home.HomeFeedScreen
 import androidx.compose.runtime.remember
 import vn.edu.usth.instaclone.data.AppContainer
 import vn.edu.usth.instaclone.ui.auth.LoginScreen
+import vn.edu.usth.instaclone.ui.auth.LogoutButton
 import vn.edu.usth.instaclone.ui.chat.ChatScreen
 import vn.edu.usth.instaclone.ui.chat.ConversationListScreen
 
@@ -70,16 +71,17 @@ fun AppNavHost() {
                 )
             }
             composable(Routes.MY_PROFILE) {
-                PlaceholderScreen("S-06 My profile", owner = "Trang . T-23") {
-                    Button(onClick = {navController.navigate(Routes.EDIT_PROFILE)}) {Text("Edit profile")}
-                    Button(onClick = {
-                        AppContainer.authRepository.signOut()
-                        navController.navigate(Routes.LOGIN) {
-                            popUpTo(navController.graph.id) {inclusive = true}
-                        }
-                    }) {Text("Log out (temporary")}
-                }
+                    PlaceholderScreen("S-06 My profile", owner = "Trang . T-23") {
+                        Button(onClick = {navController.navigate(Routes.EDIT_PROFILE)}) {Text("Edit profile")}
+                        LogoutButton(onConfirmLogout = {
+                            AppContainer.authRepository.signOut()
+                            navController.navigate(Routes.LOGIN) {
+                                popUpTo(navController.graph.id) { inclusive = true }
+                            }
+                        })
+                    }
             }
+
             //----------Opened from other screens----------//
             composable(Routes.POST_DETAIL) { entry ->
                 val postId = entry.arguments?.getString("postId") ?: ""

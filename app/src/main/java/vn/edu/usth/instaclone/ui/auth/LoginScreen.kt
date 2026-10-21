@@ -59,6 +59,10 @@ fun LoginScreen(
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
             modifier = Modifier.fillMaxWidth(),
         )
+        TextButton(
+            onClick = viewModel::openReset,
+            modifier = Modifier.align(Alignment.End),
+        ) {Text("Forgot password?")}
         state.errorMessage?.let {message ->
             Text(message, color = MaterialTheme.colorScheme.error)
         }
@@ -71,5 +75,13 @@ fun LoginScreen(
             else {Text("Log in")}
         }
         TextButton(onClick = onCreateAccount) {Text("Don't have an account? Sign up")}
+        if (state.showReset) {
+            ResetPasswordDialog(
+                state = state,
+                onEmailChange = viewModel::onResetEmailChange,
+                onSend = viewModel::sendReset,
+                onDismiss = viewModel::closeReset,
+            )
+        }
     }
 }
