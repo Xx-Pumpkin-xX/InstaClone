@@ -2,11 +2,17 @@ package vn.edu.usth.instaclone.data.repository
 
 import com.google.firebase.Timestamp
 import kotlinx.coroutines.delay
+import vn.edu.usth.instaclone.data.AppContainer
 import vn.edu.usth.instaclone.data.model.Post
 import java.util.UUID
 
-class FakePostRepository : PostRepository {
+class FakePostRepository(
+    private val myId: () -> String = {
+        AppContainer.authRepository.currentUserId.value ?: "me"
+    },
+) : PostRepository {
     private val posts = mutableListOf<Post>()
+    private var seededMyPosts = false
 
     init {
         // Bài mẫu gốc
@@ -60,6 +66,7 @@ class FakePostRepository : PostRepository {
     }
 
     override suspend fun feedPage(after: Post?, limit: Int): List<Post> {
+        ensureMyPosts()
         // after == null: tải trang đầu / làm mới -> chờ ngắn
         // after != null: tải thêm 10 bài tiếp theo -> chờ lâu hơn (1,5 giây)
         delay(if (after == null) 300 else 1500)
@@ -76,13 +83,17 @@ class FakePostRepository : PostRepository {
     }
 
     override suspend fun followingFeedPage(after: Post?, limit: Int): List<Post> {
+        ensureMyPosts()
         delay(300)
         return posts.take(limit)
     }
 
     override suspend fun userPosts(uid: String): List<Post> {
+        ensureMyPosts()
         delay(300)
-        return posts.filter { it.authorId == uid }
+        return posts
+            .filter { it.authorId == uid }
+            .sortedByDescending { it.createdAt?.seconds ?: 0L }
     }
 
     override suspend fun getPost(postId: String): Post? {
@@ -92,11 +103,12 @@ class FakePostRepository : PostRepository {
 
     override suspend fun createPost(imageUrl: String, imagePath: String, caption: String): String {
         delay(500) // simulate network request
+        val me = myId()
         val newPostId = "post-${UUID.randomUUID().toString().take(8)}"
         val newPost = Post(
             id = newPostId,
-            authorId = "user-nam",
-            authorUsername = "nam_dev",
+            authorId = me,
+            authorUsername = if (me == "me") "nam_dev" else "you",
             authorAvatarUrl = "https://picsum.photos/id/64/200/200",
             imageUrl = imageUrl,
             imagePath = imagePath,
@@ -112,5 +124,41 @@ class FakePostRepository : PostRepository {
     override suspend fun deletePost(postId: String) {
         delay(400)
         posts.removeAll { it.id == postId }
+    }
+
+    /**
+     * The signed-in member gets a few demo posts so their profile grid is not empty.
+     * Called lazily because auth may not have finished when this repository is created.
+     */
+    private fun ensureMyPosts() {
+        if (seededMyPosts) return
+        seededMyPosts = true
+        val me = myId()
+        if (posts.any { it.authorId == me }) return
+
+        val captions = listOf(
+            "My first post",
+            "Building the profile screen",
+            "Weekend walk",
+            "Coffee break",
+            "Sunset",
+            "Good vibes",
+        )
+        captions.forEachIndexed { index, caption ->
+            posts.add(
+                Post(
+                    id = "post-me-%02d".format(index + 1),
+                    authorId = me,
+                    authorUsername = if (me == "me") "nam_dev" else "you",
+                    authorAvatarUrl = "https://picsum.photos/id/64/200/200",
+                    imageUrl = "https://picsum.photos/id/${30 + index}/1080/1080",
+                    imagePath = "images/posts/$me/post-me-%02d.jpg".format(index + 1),
+                    caption = caption,
+                    likeCount = (3..80).random().toLong(),
+                    commentCount = (0..12).random().toLong(),
+                    createdAt = Timestamp(Timestamp.now().seconds - index * 3600L, 0),
+                )
+            )
+        }
     }
 }

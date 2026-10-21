@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -35,10 +36,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.ColorPainter
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.platform.LocalContext
+import coil.compose.AsyncImage
 import vn.edu.usth.instaclone.data.model.Post
 
 // HÀM 1: Màn hình Home
@@ -46,6 +50,7 @@ import vn.edu.usth.instaclone.data.model.Post
 @Composable
 fun HomeFeedScreen(
     onPostClick: (String) -> Unit = {},
+    onAuthorClick: (String) -> Unit = {},
     viewModel: HomeFeedViewModel = viewModel(),
 ) {
     val posts by viewModel.posts.collectAsState()
@@ -94,7 +99,11 @@ fun HomeFeedScreen(
                 modifier = Modifier.fillMaxSize()
             ) {
                 items(posts, key = { it.id }) { post ->
-                    PostItem(post = post, onClick = { onPostClick(post.id) })
+                    PostItem(
+                        post = post,
+                        onClick = { onPostClick(post.id) },
+                        onAuthorClick = { onAuthorClick(post.authorId) },
+                    )
                 }
 
                 // Vòng xoay khi đang tải thêm
@@ -116,7 +125,7 @@ fun HomeFeedScreen(
 }
 // HÀM 2: Hiển thị 1 bài đăng (giữ nguyên như bạn đã có)
 @Composable
-fun PostItem(post: Post, onClick: () -> Unit) {
+fun PostItem(post: Post, onClick: () -> Unit, onAuthorClick: () -> Unit = {}) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -125,10 +134,18 @@ fun PostItem(post: Post, onClick: () -> Unit) {
     ) {
         // Phần 1: avatar + tên
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp),
+            modifier = Modifier
+                .clickable(onClick = onAuthorClick)
+                .heightIn(min = 48.dp)
+                .padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
+            AsyncImage(
+                model = post.authorAvatarUrl,
+                contentDescription = stringResource(R.string.home_avatar, post.authorUsername),
+                contentScale = ContentScale.Crop,
+                placeholder = ColorPainter(Color.LightGray),
+                error = ColorPainter(Color.LightGray),
                 modifier = Modifier
                     .size(36.dp)
                     .clip(CircleShape)
