@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.FavoriteBorder
@@ -62,11 +63,13 @@ import vn.edu.usth.instaclone.data.model.Post
 @Composable
 fun HomeFeedScreen(
     onPostClick: (String) -> Unit = {},
+    onAuthorClick: (String) -> Unit = {},
     viewModel: HomeFeedViewModel = viewModel(),
 ) {
     val posts by viewModel.posts.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val isLoadingMore by viewModel.isLoadingMore.collectAsState()
+    val likedPostIds by viewModel.likedPostIds.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
     val context = LocalContext.current
     val isOnline by remember { observeOnline(context) }.collectAsState(initial = true)
@@ -134,13 +137,15 @@ fun HomeFeedScreen(
                         modifier = Modifier.fillMaxSize()
                     ) {
                         items(posts, key = { it.id }) { post ->
-                            val myId = currentUserId ?: "user-nam"
-                            val isOwnPost = post.authorId == myId || post.authorId == "user-nam" || myId == "user-nam"
+                            val isOwnPost = currentUserId != null && post.authorId == currentUserId
                             PostItem(
                                 post = post,
                                 isOwnPost = isOwnPost,
                                 onClick = { onPostClick(post.id) },
-                                onDelete = { viewModel.deletePost(post.id) }
+                                onDelete = { viewModel.deletePost(post.id) },
+                                onAuthorClick = { onAuthorClick(post.authorId) },
+                                isLiked = post.id in likedPostIds,
+                                onLikeClick = { viewModel.toggleLike(post.id) }
                             )
                         }
 
@@ -173,7 +178,10 @@ fun PostItem(
     post: Post,
     isOwnPost: Boolean,
     onClick: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onAuthorClick: () -> Unit = {},
+    isLiked: Boolean = false,
+    onLikeClick: () -> Unit = {}
 ) {
     var showMenu by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
@@ -195,7 +203,7 @@ fun PostItem(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .weight(1f)
-                    .clickable { onClick() }
+                    .clickable { onAuthorClick() }
             ) {
                 if (post.authorAvatarUrl.isNotBlank()) {
                     AsyncImage(
@@ -279,11 +287,13 @@ fun PostItem(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = Icons.Outlined.FavoriteBorder,
-                contentDescription = stringResource(R.string.home_like)
-            )
-            Spacer(modifier = Modifier.width(4.dp))
+            IconButton(onClick = onLikeClick) {
+                Icon(
+                    imageVector = if (isLiked) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                    contentDescription = stringResource(R.string.home_like),
+                    tint = if (isLiked) Color.Red else Color.Unspecified
+                )
+            }
             Text(text = "${post.likeCount}")
             Spacer(modifier = Modifier.width(16.dp))
             Text(text = stringResource(R.string.home_comments, post.commentCount))
