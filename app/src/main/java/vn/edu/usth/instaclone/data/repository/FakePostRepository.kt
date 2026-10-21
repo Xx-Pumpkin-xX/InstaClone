@@ -130,6 +130,16 @@ class FakePostRepository(
      * The signed-in member gets a few demo posts so their profile grid is not empty.
      * Called lazily because auth may not have finished when this repository is created.
      */
+
+    // Tăng hoặc giảm số bình luận của một bài (dùng bởi FakeCommentRepository)
+    fun addToCommentCount(postId: String, delta: Long) {
+        val i = posts.indexOfFirst { it.id == postId }
+        if (i != -1) {
+            posts[i] = posts[i].copy(
+                commentCount = (posts[i].commentCount + delta).coerceAtLeast(0)
+            )
+        }
+    }
     private fun ensureMyPosts() {
         if (seededMyPosts) return
         seededMyPosts = true
