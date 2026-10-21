@@ -47,6 +47,7 @@ class FakeCommentRepository(
     override suspend fun addComment(postId: String, text: String) {
         val list = listFor(postId)
         list.add(
+            0,// chèn vào ĐẦU danh sách (không có số này thì nó chèn vào CUỐI)
             Comment(
                 id = "c${nextId++}",
                 authorId = "demo-uid",

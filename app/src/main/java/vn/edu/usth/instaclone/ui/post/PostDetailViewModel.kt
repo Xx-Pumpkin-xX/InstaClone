@@ -26,9 +26,31 @@ class PostDetailViewModel(
     private val _comments = MutableStateFlow<List<Comment>>(emptyList())
     val comments: StateFlow<List<Comment>> = _comments
 
+    // MỚI: true = còn bình luận chưa hiện, có thể tải thêm
+    private val _hasMore = MutableStateFlow(false)
+    val hasMore: StateFlow<Boolean> = _hasMore
+
     // Thông báo lỗi (null = không có lỗi)
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage
+
+    // MỚI: toàn bộ bình luận của bài (trong "kho")
+    private var allComments: List<Comment> = emptyList()
+    // MỚI: đang cho hiện bao nhiêu bình luận
+    private var shown = PAGE_SIZE
+
+    // MỚI: cắt allComments lấy phần đầu để hiện ra màn hình
+    private fun publish() {
+        _comments.value = allComments.take(shown)      // chỉ lấy `shown` cái đầu
+        _hasMore.value = allComments.size > shown      // còn dư thì còn tải thêm được
+    }
+
+    // MỚI: màn hình gọi khi kéo gần cuối
+    fun loadMoreComments() {
+        if (!_hasMore.value) return    // hết rồi thì thôi
+        shown += PAGE_SIZE             // hiện thêm 5
+        publish()
+    }
 
     private var postId: String = ""
 
@@ -39,7 +61,9 @@ class PostDetailViewModel(
         viewModelScope.launch {
             try {
                 _post.value = postRepo.getPost(id)
-                _comments.value = commentRepo.comments(id)
+                allComments = commentRepo.comments(id)   // SỬA: lưu vào kho trước
+                shown = PAGE_SIZE                        // MỚI: bắt đầu lại từ 5
+                publish()
             } catch (e: Exception) {
                 _errorMessage.value = "Không tải được bài viết"
             }
@@ -53,7 +77,9 @@ class PostDetailViewModel(
         viewModelScope.launch {
             try {
                 commentRepo.addComment(postId, content)
-                _comments.value = commentRepo.comments(postId)
+                allComments = commentRepo.comments(postId)   // SỬA: lưu vào kho
+                shown += 1                                   // MỚI: tăng 1 để không có bình luận cũ nào bị "đẩy mất"
+                publish()
             } catch (e: Exception) {
                 _errorMessage.value = "Không gửi được bình luận"
             }
@@ -62,5 +88,10 @@ class PostDetailViewModel(
 
     fun clearError() {
         _errorMessage.value = null
+    }
+
+    // MỚI: hằng số, mỗi lần hiện 5 bình luận
+    companion object {
+        private const val PAGE_SIZE = 5
     }
 }

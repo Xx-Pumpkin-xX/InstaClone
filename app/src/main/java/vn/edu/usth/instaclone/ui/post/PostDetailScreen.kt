@@ -42,6 +42,14 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import vn.edu.usth.instaclone.data.model.Comment
 import vn.edu.usth.instaclone.data.model.Post
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.rememberCoroutineScope      // MỚI
+import androidx.compose.runtime.rememberUpdatedState        // MỚI
+import androidx.compose.runtime.snapshotFlow                // MỚI
+import kotlinx.coroutines.flow.distinctUntilChanged         // MỚI
+import kotlinx.coroutines.flow.filter                       // MỚI
+import kotlinx.coroutines.launch                            // MỚI
+
 // SCREEN 1: connected to the ViewModel, loads data and handles errors
 @Composable
 fun PostDetailScreen(
@@ -51,6 +59,7 @@ fun PostDetailScreen(
 ) {
     val post by viewModel.post.collectAsState()
     val comments by viewModel.comments.collectAsState()
+    val hasMore by viewModel.hasMore.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
     val context = LocalContext.current
 
@@ -68,6 +77,8 @@ fun PostDetailScreen(
     PostDetailContent(
         post = post,
         comments = comments,
+        hasMore = hasMore,
+        onLoadMore = { viewModel.loadMoreComments() },
         onSend = { text -> viewModel.sendComment(text) },
         onBack = onBack,
     )
@@ -79,17 +90,41 @@ fun PostDetailScreen(
 fun PostDetailContent(
     post: Post?,
     comments: List<Comment>,
+    hasMore: Boolean = false,
+    onLoadMore: () -> Unit = {},
     onSend: (String) -> Unit,
     onBack: () -> Unit = {},
 ) {
     var text by remember { mutableStateOf("") }
 
+    // Nhớ vị trí cuộn của danh sách
+    val listState = rememberLazyListState()
+
+    // MỚI: để chạy lệnh cuộn lên đầu sau khi gửi bình luận
+    val scope = rememberCoroutineScope()
+
+    // MỚI: luôn dùng giá trị mới nhất của hasMore và onLoadMore bên trong LaunchedEffect
+    val currentHasMore by rememberUpdatedState(hasMore)
+    val currentOnLoadMore by rememberUpdatedState(onLoadMore)
+
+    // MỚI: chỉ tải thêm khi người dùng vừa cuộn tới gần cuối
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            // canScrollBackward = đã cuộn xuống ít nhất một chút (không phải mới mở bài)
+            listState.canScrollBackward && last >= listState.layoutInfo.totalItemsCount - 2
+        }
+            .distinctUntilChanged()   // chỉ phản ứng khi giá trị đổi (false -> true)
+            .filter { it }            // chỉ quan tâm lúc nó thành true
+            .collect { if (currentHasMore) currentOnLoadMore() }
+    }
+
     Scaffold(
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),   // <- thêm dòng này
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
                 title = { Text("Post") },
-                windowInsets = WindowInsets(0, 0, 0, 0),   // <- thêm dòng này
+                windowInsets = WindowInsets(0, 0, 0, 0),
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
@@ -106,7 +141,7 @@ fun PostDetailContent(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            LazyColumn(modifier = Modifier.weight(1f)) {
+            LazyColumn(state = listState, modifier = Modifier.weight(1f)) {
 
                 // Part 1: the post (it can be null)
                 if (post != null) {
@@ -156,6 +191,7 @@ fun PostDetailContent(
                     onClick = {
                         onSend(text)
                         text = ""
+                        scope.launch { listState.animateScrollToItem(0) }   // MỚI: cuộn về đầu
                     },
                     enabled = text.isNotBlank(),
                 ) {
