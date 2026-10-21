@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -43,6 +44,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import vn.edu.usth.instaclone.R
+import androidx.compose.ui.graphics.painter.ColorPainter
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import vn.edu.usth.instaclone.data.model.Post
 
 // HÀM 1: Màn hình Home
@@ -50,6 +54,7 @@ import vn.edu.usth.instaclone.data.model.Post
 @Composable
 fun HomeFeedScreen(
     onPostClick: (String) -> Unit = {},
+    onAuthorClick: (String) -> Unit = {},
     viewModel: HomeFeedViewModel = viewModel(),
 ) {
     val posts by viewModel.posts.collectAsState()
@@ -112,7 +117,8 @@ fun HomeFeedScreen(
                         post = post,
                         onClick = { onPostClick(post.id) },
                         isLiked = post.id in likedPostIds,
-                        onLikeClick = { viewModel.toggleLike(post.id) }
+                        onLikeClick = { viewModel.toggleLike(post.id) },
+                        onAuthorClick = { onAuthorClick(post.authorId) },
                     )
                 }
 
@@ -139,6 +145,7 @@ fun HomeFeedScreen(
 fun PostItem(
     post: Post,
     onClick: () -> Unit,
+    onAuthorClick: () -> Unit = {},
     isLiked: Boolean = false,
     onLikeClick: () -> Unit = {},
 ) {
@@ -150,10 +157,18 @@ fun PostItem(
     ) {
         // Phần 1: avatar + tên
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp),
+            modifier = Modifier
+                .clickable(onClick = onAuthorClick)
+                .heightIn(min = 48.dp)
+                .padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
+            AsyncImage(
+                model = post.authorAvatarUrl,
+                contentDescription = stringResource(R.string.home_avatar, post.authorUsername),
+                contentScale = ContentScale.Crop,
+                placeholder = ColorPainter(Color.LightGray),
+                error = ColorPainter(Color.LightGray),
                 modifier = Modifier
                     .size(36.dp)
                     .clip(CircleShape)
