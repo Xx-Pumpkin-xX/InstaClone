@@ -71,7 +71,7 @@ private fun ForgotPasswordContent(
         }
         if (state.requestCompleted) {
             // Same message whether or not this email has an account.
-            Text("If an account exists for this email, a password reset link will be sent. Check your inbox and spam folder.")
+            Text("If an account exists for this email, we've sent a reset link")
         }
         Button(
             onClick = onSend,

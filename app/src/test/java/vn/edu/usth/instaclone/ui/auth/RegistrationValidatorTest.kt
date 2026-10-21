@@ -1,46 +1,42 @@
 package vn.edu.usth.instaclone.ui.auth
 
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
+import org.junit.Assert.*
 import org.junit.Test
 
 class RegistrationValidatorTest {
-    @Test fun usernameIsNormalized() {
-        assertEquals("dat_01", RegistrationValidator.normalizedUsername(" Dat_01 "))
+    @Test fun normalizesUsernamesWithoutDependingOnDeviceLocale() {
+        assertEquals("phong.demo", RegistrationValidator.normalizedUsername(" Phong.Demo "))
     }
-    @Test fun usernameLengthBoundaries() {
-        assertFalse(RegistrationValidator.validUsername("ab"))
+    @Test fun acceptsDotsUnderscoresAndThirtyCharacterNames() {
+        assertTrue(RegistrationValidator.validUsername("phong.demo"))
+        assertTrue(RegistrationValidator.validUsername("phong_demo"))
+        assertTrue(RegistrationValidator.validUsername("a".repeat(30)))
         assertTrue(RegistrationValidator.validUsername("abc"))
-        assertTrue(RegistrationValidator.validUsername("a".repeat(20)))
-        assertFalse(RegistrationValidator.validUsername("a".repeat(21)))
     }
-    @Test fun usernameRejectsInvalidCharacters() {
-        assertFalse(RegistrationValidator.validUsername("dat.name"))
-        assertFalse(RegistrationValidator.validUsername("dat name"))
-        assertFalse(RegistrationValidator.validUsername("Dat"))
+    @Test fun rejectsShortLongAndUnsafeUsernames() {
+        for (name in listOf("ab", "a".repeat(31), "a/b", "a b", "Dat", "đạt", "a@b")) {
+            assertFalse(name, RegistrationValidator.validUsername(name))
+        }
     }
-    @Test fun validInputHasNoError() {
-        assertNull(RegistrationValidator.errorFor("dat@example.com", "dat", "Secret123!"))
+    @Test fun emailErrorMatchesTeamCaseTwo() {
+        assertEquals("Enter a valid email", RegistrationValidator.validate("abc", "phong", "abcdefgh", "abcdefgh").email)
     }
-    @Test fun invalidEmailHasError() {
-        assertTrue(RegistrationValidator.errorFor("invalid", "dat", "Secret123!") != null)
+    @Test fun usernameErrorMatchesTeamCaseThree() {
+        assertEquals("Use 3–30 letters, numbers, . or _", RegistrationValidator.validate("a@example.com", "ab", "abcdefgh", "abcdefgh").username)
     }
-    @Test fun shortPasswordHasError() {
-        assertTrue(RegistrationValidator.errorFor("dat@example.com", "dat", "123") != null)
+    @Test fun eightLowercaseCharactersAreAllowed() {
+        assertTrue(RegistrationValidator.validate("a@example.com", "phong.demo", "abcdefgh", "abcdefgh").isValid)
     }
-    @Test fun passwordAtLeastTenCharacters() {
-        assertTrue(RegistrationValidator.errorFor("dat@example.com", "dat", "Short12!A") != null)
-        assertNull(RegistrationValidator.errorFor("dat@example.com", "dat", "Secret123!"))
+    @Test fun rejectsSevenCharacterPassword() {
+        assertEquals("Use at least 8 characters", RegistrationValidator.validate("a@example.com", "phong", "abcdefg", "abcdefg").password)
     }
-    @Test fun passwordRequiresUppercase() {
-        assertTrue(RegistrationValidator.errorFor("dat@example.com", "dat", "secret123!") != null)
+    @Test fun mismatchedConfirmationIsRejected() {
+        assertEquals("Passwords don't match", RegistrationValidator.validate("a@example.com", "phong", "abcdefgh", "abcdefgi").confirmPassword)
     }
-    @Test fun passwordRequiresSpecialCharacter() {
-        assertTrue(RegistrationValidator.errorFor("dat@example.com", "dat", "Secret1234") != null)
+    @Test fun confirmationIsRequired() {
+        assertEquals("Passwords don't match", RegistrationValidator.validate("a@example.com", "phong", "abcdefgh", "").confirmPassword)
     }
-    @Test fun spaceDoesNotCountAsSpecialCharacter() {
-        assertTrue(RegistrationValidator.errorFor("dat@example.com", "dat", "Secret123 ") != null)
+    @Test fun passwordsAreNotTrimmed() {
+        assertEquals("Passwords don't match", RegistrationValidator.validate("a@example.com", "phong", "abcdefg ", "abcdefg").confirmPassword)
     }
 }

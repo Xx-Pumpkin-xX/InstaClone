@@ -12,10 +12,10 @@ service cloud.firestore {
     }
 
     //username chữ thường, số, dấu gạch dưới
-    //dài 3–20 ký tự
+    //dài 3–30 ký tự
     function validUsername(username) {
       return username is string
-      && username.matches('^[a-z0-9_]{3,20}$');
+      && username.matches('^[a-z0-9_.]{3,30}$');
     }
 
     function validUser(data) {
