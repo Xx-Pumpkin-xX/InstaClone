@@ -1,6 +1,6 @@
 package vn.edu.usth.instaclone.ui.home
-
-import android.widget.Toast
+import androidx.compose.ui.res.stringResource
+import vn.edu.usth.instaclone.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -19,12 +20,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -37,12 +36,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.graphics.painter.ColorPainter
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import vn.edu.usth.instaclone.R
+import androidx.compose.ui.platform.LocalContext
+import coil.compose.AsyncImage
 import vn.edu.usth.instaclone.data.model.Post
 
 // HÀM 1: Màn hình Home
@@ -50,14 +50,12 @@ import vn.edu.usth.instaclone.data.model.Post
 @Composable
 fun HomeFeedScreen(
     onPostClick: (String) -> Unit = {},
+    onAuthorClick: (String) -> Unit = {},
     viewModel: HomeFeedViewModel = viewModel(),
 ) {
     val posts by viewModel.posts.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val isLoadingMore by viewModel.isLoadingMore.collectAsState()
-    val likedPostIds by viewModel.likedPostIds.collectAsState()
-    val errorMessage by viewModel.errorMessage.collectAsState()
-
     val context = LocalContext.current
     val isOnline by remember { observeOnline(context) }.collectAsState(initial = true)
     val listState = rememberLazyListState()
@@ -75,13 +73,6 @@ fun HomeFeedScreen(
         if (nearEnd) viewModel.loadMore()
     }
 
-    // Có lỗi thì hiện Toast rồi xóa lỗi đi
-    LaunchedEffect(errorMessage) {
-        errorMessage?.let { message ->
-            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-            viewModel.clearError()
-        }
-    }
 
     Column(modifier = Modifier.fillMaxSize()) {
 
@@ -111,8 +102,7 @@ fun HomeFeedScreen(
                     PostItem(
                         post = post,
                         onClick = { onPostClick(post.id) },
-                        isLiked = post.id in likedPostIds,
-                        onLikeClick = { viewModel.toggleLike(post.id) }
+                        onAuthorClick = { onAuthorClick(post.authorId) },
                     )
                 }
 
@@ -133,15 +123,9 @@ fun HomeFeedScreen(
         }
     }
 }
-
-// HÀM 2: Hiển thị 1 bài đăng
+// HÀM 2: Hiển thị 1 bài đăng (giữ nguyên như bạn đã có)
 @Composable
-fun PostItem(
-    post: Post,
-    onClick: () -> Unit,
-    isLiked: Boolean = false,
-    onLikeClick: () -> Unit = {},
-) {
+fun PostItem(post: Post, onClick: () -> Unit, onAuthorClick: () -> Unit = {}) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -150,10 +134,18 @@ fun PostItem(
     ) {
         // Phần 1: avatar + tên
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp),
+            modifier = Modifier
+                .clickable(onClick = onAuthorClick)
+                .heightIn(min = 48.dp)
+                .padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
+            AsyncImage(
+                model = post.authorAvatarUrl,
+                contentDescription = stringResource(R.string.home_avatar, post.authorUsername),
+                contentScale = ContentScale.Crop,
+                placeholder = ColorPainter(Color.LightGray),
+                error = ColorPainter(Color.LightGray),
                 modifier = Modifier
                     .size(36.dp)
                     .clip(CircleShape)
@@ -175,16 +167,11 @@ fun PostItem(
 
         // Phần 3: like + comment
         Row(
-            modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
+            modifier = Modifier.padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = onLikeClick) {
-                Icon(
-                    imageVector = if (isLiked) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                    contentDescription = stringResource(R.string.home_like),
-                    tint = if (isLiked) Color.Red else Color.Unspecified
-                )
-            }
+            Icon(imageVector = Icons.Outlined.FavoriteBorder, contentDescription = stringResource(R.string.home_like))
+            Spacer(modifier = Modifier.width(4.dp))
             Text(text = "${post.likeCount}")
             Spacer(modifier = Modifier.width(16.dp))
             Text(text = stringResource(R.string.home_comments, post.commentCount))
