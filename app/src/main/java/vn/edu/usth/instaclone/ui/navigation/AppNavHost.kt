@@ -1,10 +1,9 @@
 package vn.edu.usth.instaclone.ui.navigation
 
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.navigation.compose.NavHost
@@ -15,9 +14,12 @@ import vn.edu.usth.instaclone.ui.common.PlaceholderScreen
 import vn.edu.usth.instaclone.ui.home.HomeFeedScreen
 import androidx.compose.runtime.remember
 import vn.edu.usth.instaclone.data.AppContainer
+import vn.edu.usth.instaclone.ui.auth.ForgotPasswordScreen
 import vn.edu.usth.instaclone.ui.auth.LoginScreen
+import vn.edu.usth.instaclone.ui.auth.RegisterScreen
 import vn.edu.usth.instaclone.ui.chat.ChatScreen
 import vn.edu.usth.instaclone.ui.chat.ConversationListScreen
+import vn.edu.usth.instaclone.ui.profile.ProfileScreen
 
 @Composable
 fun AppNavHost() {
@@ -27,6 +29,7 @@ fun AppNavHost() {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     val showBottomBar = bottomTabs.any {it.route == currentRoute}
+    val currentUserId by AppContainer.authRepository.currentUserId.collectAsState()
     val startRoute = remember {
         if (AppContainer.authRepository.currentUserId.value != null) Routes.HOME else Routes.LOGIN
     }
@@ -46,14 +49,28 @@ fun AppNavHost() {
                         }
                     },
                     onCreateAccount = {navController.navigate(Routes.REGISTER)},
+                    onForgotPassword = { navController.navigate(Routes.FORGOT_PASSWORD) },
                 )
             }
+            composable(Routes.FORGOT_PASSWORD) {
+                ForgotPasswordScreen(onBackToLogin = { navController.popBackStack() })
+            }
             composable(Routes.REGISTER) {
-                PlaceholderScreen("S-02 Register", owner = "Dat . T-09")
+                //S-02 Register, Dat . T-09
+                RegisterScreen(
+                    onRegistered = {
+                        navController.navigate(Routes.HOME) {
+                            popUpTo(Routes.LOGIN) { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    },
+                    onBackToLogin = { navController.popBackStack() }
+                )
             }
             composable(Routes.HOME) {
                     HomeFeedScreen(
                         onPostClick = { postId -> navController.navigate(Routes.postDetail(postId)) },
+                        onAuthorClick = { uid -> navController.navigate(Routes.profile(uid)) },
                     )
             }
             composable(Routes.SEARCH) {
@@ -75,14 +92,19 @@ fun AppNavHost() {
                 )
             }
             composable(Routes.MY_PROFILE) {
-                PlaceholderScreen("S-06 My profile", owner = "Trang . T-23") {
-                    Button(onClick = {navController.navigate(Routes.EDIT_PROFILE)}) {Text("Edit profile")}
-                    Button(onClick = {
-                        AppContainer.authRepository.signOut()
-                        navController.navigate(Routes.LOGIN) {
-                            popUpTo(navController.graph.id) {inclusive = true}
-                        }
-                    }) {Text("Log out (temporary")}
+                currentUserId?.let { myId ->
+                    ProfileScreen(
+                        userId = myId,
+                        showBack = false,
+                        onEditProfile = { navController.navigate(Routes.EDIT_PROFILE) },
+                        onLogOut = {
+                            AppContainer.authRepository.signOut()
+                            navController.navigate(Routes.LOGIN) {
+                                popUpTo(navController.graph.id) {inclusive = true}
+                            }
+                        },
+                        onPostClick = { postId -> navController.navigate(Routes.postDetail(postId)) },
+                    )
                 }
             }
             //----------Opened from other screens----------//
@@ -92,9 +114,20 @@ fun AppNavHost() {
             }
             composable(Routes.PROFILE) { entry ->
                 val userId = entry.arguments?.getString("userId") ?: ""
-                PlaceholderScreen("S-06 Profile: $userId", owner = "Trang . T-23") {
-                    Button(onClick = {navController.navigate(Routes.chat(userId))}) {Text("Message")}
-                }
+                ProfileScreen(
+                    userId = userId,
+                    showBack = true,
+                    onBack = { navController.popBackStack() },
+                    onEditProfile = { navController.navigate(Routes.EDIT_PROFILE) },
+                    onLogOut = {
+                        AppContainer.authRepository.signOut()
+                        navController.navigate(Routes.LOGIN) {
+                            popUpTo(navController.graph.id) {inclusive = true}
+                        }
+                    },
+                    onPostClick = { postId -> navController.navigate(Routes.postDetail(postId)) },
+                    onMessage = { uid -> navController.navigate(Routes.chat(uid)) },
+                )
             }
             composable(Routes.EDIT_PROFILE) {
                 PlaceholderScreen("S-07 Edit profile", owner = "Nam . T-15")

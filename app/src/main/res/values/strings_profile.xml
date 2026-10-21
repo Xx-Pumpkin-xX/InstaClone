@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="profile_title">Profile</string>
+    <string name="profile_posts">Posts</string>
+    <string name="profile_followers">Followers</string>
+    <string name="profile_following">Following</string>
+    <string name="profile_edit">Edit profile</string>
+    <string name="profile_more_options">More options</string>
+    <string name="profile_log_out">Log out</string>
+    <string name="profile_follow">Follow</string>
+    <string name="profile_following_button">Following</string>
+    <string name="profile_message">Message</string>
+    <string name="profile_user_not_found">User not found</string>
+    <string name="profile_no_posts">No posts yet</string>
+    <string name="profile_retry">Retry</string>
+    <string name="profile_back">Back</string>
+    <string name="profile_offline_banner">Offline</string>
+    <string name="profile_avatar">Avatar of %1$s</string>
+    <string name="profile_post_by">Post by %1$s</string>
+</resources>
