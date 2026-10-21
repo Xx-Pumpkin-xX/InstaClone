@@ -102,36 +102,31 @@ class HomeFeedViewModel(
         _posts.value = danhSachMoi
     }
 
+    private val pendingLikes = mutableSetOf<String>()
+
     fun toggleLike(postId: String) {
-        val daLike = postId in _likedPostIds.value
+        // Đang chờ kết quả của bài này thì bỏ qua cú chạm (US-08)
+        if (!pendingLikes.add(postId)) return
+
+        val nowLiked = postId !in _likedPostIds.value
 
         // Bước 1: đổi tim và số NGAY trên màn hình
-        if (daLike) {
-            _likedPostIds.value = _likedPostIds.value - postId
-            doiSoLike(postId, -1)
-        } else {
-            _likedPostIds.value = _likedPostIds.value + postId
-            doiSoLike(postId, 1)
-        }
+        _likedPostIds.value =
+            if (nowLiked) _likedPostIds.value + postId else _likedPostIds.value - postId
+        doiSoLike(postId, if (nowLiked) 1 else -1)
 
         // Bước 2: báo cho server
         viewModelScope.launch {
             try {
-                if (daLike) {
-                    postRepo.unlikePost(postId)
-                } else {
-                    postRepo.likePost(postId)
-                }
+                likeRepo.setLiked(postId, nowLiked)
             } catch (e: Exception) {
-                // Bước 3: server lỗi thì trả về như cũ
-                if (daLike) {
-                    _likedPostIds.value = _likedPostIds.value + postId
-                    doiSoLike(postId, 1)
-                } else {
-                    _likedPostIds.value = _likedPostIds.value - postId
-                    doiSoLike(postId, -1)
-                }
-                _errorMessage.value = "Couldn't update your like. Please try again."
+                // Bước 3: lỗi thì trả về như cũ
+                _likedPostIds.value =
+                    if (nowLiked) _likedPostIds.value - postId else _likedPostIds.value + postId
+                doiSoLike(postId, if (nowLiked) -1 else 1)
+                _errorMessage.value = "Couldn't update like"
+            } finally {
+                pendingLikes.remove(postId)
             }
         }
     }

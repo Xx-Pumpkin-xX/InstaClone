@@ -29,7 +29,6 @@ class PostDetailViewModel(
     // MỚI: true = còn bình luận chưa hiện, có thể tải thêm
     private val _hasMore = MutableStateFlow(false)
     val hasMore: StateFlow<Boolean> = _hasMore
-
     // Thông báo lỗi (null = không có lỗi)
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage
