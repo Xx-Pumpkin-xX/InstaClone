@@ -13,7 +13,7 @@ import vn.edu.usth.instaclone.data.repository.LikeRepository
 import vn.edu.usth.instaclone.data.repository.FakeLikeRepository
 class HomeFeedViewModel(
     private val postRepo: PostRepository = AppContainer.postRepository,
-    private val likeRepo: LikeRepository = FakeLikeRepository(),
+    private val likeRepo: LikeRepository = AppContainer.likeRepository,
 ) : ViewModel() {
 
     private val _posts = MutableStateFlow<List<Post>>(emptyList())
@@ -89,17 +89,17 @@ class HomeFeedViewModel(
 
 
     // Cộng hoặc trừ số like của 1 bài (them = 1 là tăng, them = -1 là giảm)
-    private fun doiSoLike(postId: String, them: Long) {
-        val danhSachMoi = mutableListOf<Post>()
+    private fun changeLike(postId: String, them: Long) {
+        val newList = mutableListOf<Post>()
         for (post in _posts.value) {
             if (post.id == postId) {
 
-                danhSachMoi.add(post.copy(likeCount = post.likeCount + them))
+                newList.add(post.copy(likeCount = post.likeCount + them))
             } else {
-                danhSachMoi.add(post)
+                newList.add(post)
             }
         }
-        _posts.value = danhSachMoi
+        _posts.value = newList
     }
 
     private val pendingLikes = mutableSetOf<String>()
@@ -113,7 +113,7 @@ class HomeFeedViewModel(
         // Bước 1: đổi tim và số NGAY trên màn hình
         _likedPostIds.value =
             if (nowLiked) _likedPostIds.value + postId else _likedPostIds.value - postId
-        doiSoLike(postId, if (nowLiked) 1 else -1)
+        changeLike(postId, if (nowLiked) 1 else -1)
 
         // Bước 2: báo cho server
         viewModelScope.launch {
@@ -123,7 +123,7 @@ class HomeFeedViewModel(
                 // Bước 3: lỗi thì trả về như cũ
                 _likedPostIds.value =
                     if (nowLiked) _likedPostIds.value - postId else _likedPostIds.value + postId
-                doiSoLike(postId, if (nowLiked) -1 else 1)
+                changeLike(postId, if (nowLiked) -1 else 1)
                 _errorMessage.value = "Couldn't update like"
             } finally {
                 pendingLikes.remove(postId)
