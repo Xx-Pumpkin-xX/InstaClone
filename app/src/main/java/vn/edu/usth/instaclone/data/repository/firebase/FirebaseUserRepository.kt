@@ -9,55 +9,26 @@ import vn.edu.usth.instaclone.data.model.User
 import vn.edu.usth.instaclone.data.repository.UserRepository
 import java.util.Locale
 
-/**
- * Real UserRepository on Cloud Firestore.
- *
- * users/{uid}            username, displayName, bio, avatarUrl, counts, createdAt
- * usernames/{username}   uid
- *
- * Reads use the default Firestore source, so documents already in the local cache
- * remain readable while the device is offline (NFR-09).
- *
- * Registration already creates both documents in FirebaseAuthRepository.signUp().
- * [claimUsername] is kept for the interface and only creates a missing profile.
- */
 class FirebaseUserRepository : UserRepository {
-
-    private val db = Firebase.firestore
     private val auth = Firebase.auth
-    private val users = db.collection("users")
-    private val usernames = db.collection("usernames")
+    private val db = Firebase.firestore
 
     override suspend fun claimUsername(uid: String, username: String) {
-        val signedInUid = auth.currentUser?.uid
-            ?: throw IllegalStateException("Must be signed in to claim a username")
-        require(uid == signedInUid) { "Can only claim your own username" }
+        require(auth.currentUser?.uid == uid) { "Must be signed in to claim a username" }
+        val normalizedUsername = username.trim().lowercase(Locale.ROOT)
+        require(USERNAME_PATTERN.matches(normalizedUsername)) { "Invalid username" }
 
-        val name = username.trim().lowercase(Locale.ROOT)
-        require(name.isNotBlank()) { "Username is required" }
-
-        val profileRef = users.document(uid)
-        val claimRef = usernames.document(name)
-
-        // Atomic: either both the username claim and the profile exist, or neither does.
+        val usernameRef = db.collection("usernames").document(normalizedUsername)
+        val userRef = db.collection("users").document(uid)
         db.runTransaction { transaction ->
-            val claim = transaction.get(claimRef)
-            val profile = transaction.get(profileRef)
-
-            if (claim.exists()) {
-                val alreadyMine = claim.getString("uid") == uid
-                    && profile.getString("username") == name
-                if (alreadyMine) return@runTransaction
-                throw IllegalStateException("Username already taken")
-            }
-            if (profile.exists()) throw IllegalStateException("Profile already exists")
-
-            transaction.set(claimRef, mapOf("uid" to uid))
+            check(!transaction.get(usernameRef).exists()) { "Username already taken" }
+            check(!transaction.get(userRef).exists()) { "Profile already exists" }
+            transaction.set(usernameRef, mapOf("uid" to uid))
             transaction.set(
-                profileRef,
+                userRef,
                 mapOf(
-                    "username" to name,
-                    "displayName" to name,
+                    "username" to normalizedUsername,
+                    "displayName" to normalizedUsername,
                     "bio" to "",
                     "avatarUrl" to "",
                     "postCount" to 0L,
@@ -70,43 +41,60 @@ class FirebaseUserRepository : UserRepository {
     }
 
     override suspend fun getUser(uid: String): User? {
-        if (uid.isBlank()) return null
-        val document = users.document(uid).get().await()
-        return if (document.exists()) document.toObject(User::class.java) else null
+        val snapshot = db.collection("users").document(uid).get().await()
+        return snapshot.toObject(User::class.java)
     }
 
     override suspend fun updateProfile(displayName: String, bio: String, avatarUrl: String?) {
         val uid = auth.currentUser?.uid
             ?: throw IllegalStateException("Must be signed in to update a profile")
+        require(displayName.length <= MAX_DISPLAY_NAME_LENGTH) { "Display name is too long" }
+        require(bio.length <= MAX_BIO_LENGTH) { "Bio is too long" }
 
-        val updates = buildMap<String, Any> {
-            put("displayName", displayName)
-            put("bio", bio)
-            // null means "keep the current avatar"; the profile rules only allow these keys.
-            if (avatarUrl != null) put("avatarUrl", avatarUrl)
+        val profileUpdates = mutableMapOf<String, Any>(
+            "displayName" to displayName,
+            "bio" to bio,
+        )
+        if (avatarUrl != null) {
+            profileUpdates["avatarUrl"] = avatarUrl
         }
-        users.document(uid).update(updates).await()
+        db.collection("users").document(uid).update(profileUpdates).await()
+
+        if (avatarUrl != null) {
+            val posts = db.collection("posts")
+                .whereEqualTo("authorId", uid)
+                .get()
+                .await()
+
+            posts.documents.chunked(MAX_BATCH_WRITES).forEach { documents ->
+                val batch = db.batch()
+                documents.forEach { document ->
+                    batch.update(document.reference, "authorAvatarUrl", avatarUrl)
+                }
+                batch.commit().await()
+            }
+        }
     }
 
     override suspend fun searchByPrefix(prefix: String, limit: Int): List<User> {
-        if (limit <= 0) return emptyList()
-        val query = prefix.trim().lowercase(Locale.ROOT)
-        if (query.isEmpty()) return emptyList()
+        val normalizedPrefix = prefix.trim().lowercase(Locale.ROOT)
+        if (normalizedPrefix.isEmpty() || limit <= 0) return emptyList()
 
-        val cappedLimit = limit.coerceAtMost(MAX_SEARCH_RESULTS)
-        val snapshot = users
-            .whereGreaterThanOrEqualTo("username", query)
-            .whereLessThanOrEqualTo("username", "$query\uF8FF")
+        val snapshot = db.collection("users")
             .orderBy("username")
-            .limit(cappedLimit.toLong())
+            .startAt(normalizedPrefix)
+            .endAt("$normalizedPrefix\uf8ff")
+            .limit(minOf(limit, MAX_SEARCH_RESULTS).toLong())
             .get()
             .await()
-
         return snapshot.toObjects(User::class.java)
     }
 
     private companion object {
-        /** FR-17 shows at most 20 matching members. */
+        const val MAX_BATCH_WRITES = 500
+        const val MAX_DISPLAY_NAME_LENGTH = 30
+        const val MAX_BIO_LENGTH = 150
         const val MAX_SEARCH_RESULTS = 20
+        val USERNAME_PATTERN = Regex("^[a-z0-9_]{3,20}$")
     }
 }

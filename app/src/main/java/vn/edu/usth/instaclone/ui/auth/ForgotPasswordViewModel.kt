@@ -37,7 +37,7 @@ class ForgotPasswordViewModel(
         if (state.isLoading || state.requestCompleted) return
         val email = state.email.trim()
         if (!Regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$").matches(email)) {
-            _uiState.update { it.copy(errorMessage = "Enter a valid email.") }
+            _uiState.update { it.copy(errorMessage = "Enter a valid email") }
             return
         }
         _uiState.update { it.copy(isLoading = true, errorMessage = null) }
@@ -49,7 +49,7 @@ class ForgotPasswordViewModel(
                 throw cancelled
             } catch (error: Exception) {
                 val message = when (error) {
-                    is FirebaseNetworkException -> "No connection. Check your internet and try again."
+                    is FirebaseNetworkException -> "No connection. Check your network and try again."
                     is FirebaseTooManyRequestsException -> "Too many requests. Please try again later."
                     else -> "Unable to process the request. Please try again later."
                 }
