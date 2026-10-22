@@ -9,5 +9,6 @@ interface PostRepository {
     suspend fun getPost(postId: String): Post?
     suspend fun createPost(imageUrl: String, imagePath: String, caption: String): String
     suspend fun deletePost(postId: String)
+    suspend fun retryPendingPostCleanups() = Unit
 
 }

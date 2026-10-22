@@ -12,6 +12,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.Assert.*
 import vn.edu.usth.instaclone.data.repository.FakePostRepository
+import vn.edu.usth.instaclone.data.repository.FakeLikeRepository
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class HomeFeedIntegrationTest {
@@ -21,7 +22,7 @@ class HomeFeedIntegrationTest {
 
     @Test fun likeUnlikeStillWorkAfterDeleteMerge() = runTest(dispatcher) {
         val repo = FakePostRepository(myId = { "alice" })
-        val vm = HomeFeedViewModel(postRepo = repo)
+        val vm = HomeFeedViewModel(postRepo = repo, likeRepo = FakeLikeRepository(repo))
         advanceUntilIdle()
         val post = vm.posts.value.first()
         vm.toggleLike(post.id)
@@ -37,7 +38,7 @@ class HomeFeedIntegrationTest {
     @Test fun deleteRemovesOwnPostWithoutBreakingLikesOnOtherPosts() = runTest(dispatcher) {
         val repo = FakePostRepository(myId = { "alice" })
         val ownId = repo.createPost("https://example.com/test.jpg", "images/posts/alice/test.jpg", "test")
-        val vm = HomeFeedViewModel(postRepo = repo)
+        val vm = HomeFeedViewModel(postRepo = repo, likeRepo = FakeLikeRepository(repo))
         advanceUntilIdle()
         vm.deletePost(ownId)
         advanceUntilIdle()

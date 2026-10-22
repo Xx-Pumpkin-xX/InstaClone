@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -59,17 +60,30 @@ class NewPostViewModel(
         if (_caption.value.length > 2200) return
 
         viewModelScope.launch {
-            val uid = Firebase.auth.currentUser?.uid ?: "user-nam"
+            val uid = Firebase.auth.currentUser?.uid
+            if (uid == null) {
+                _uiState.value = NewPostUiState.Error("Sign in to share a post")
+                return@launch
+            }
             val postId = UUID.randomUUID().toString()
             val storagePath = "images/posts/$uid/$postId.jpg"
 
             // Step 1: Compress photo (resize to <=1080px, strip EXIF metadata, max 1MB)
             _uiState.value = NewPostUiState.Compressing()
-            val compressedBytes = withContext(Dispatchers.IO) {
-                ImageCompressor.compressUri(context, uri)
+            val compressedBytes = try {
+                withContext(Dispatchers.IO) {
+                    ImageCompressor.compressUri(context, uri)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uiState.value = NewPostUiState.Error("Couldn't upload the photo. Retry")
+                return@launch
             }
 
-            if (compressedBytes == null) {
+            if (compressedBytes == null ||
+                compressedBytes.size > ImageCompressor.MAX_FILE_SIZE_BYTES
+            ) {
                 _uiState.value = NewPostUiState.Error("Couldn't upload the photo. Retry")
                 return@launch
             }
@@ -81,19 +95,17 @@ class NewPostViewModel(
                     imageStorage.upload(storagePath, compressedBytes)
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.value = NewPostUiState.Error("Couldn't upload the photo. Retry")
                 return@launch
             }
-
-            // Preserve local URI in fake mode so user sees their actual picked photo on Home feed
-            val imageUrl = if (uploadedUrl.contains("picsum.photos")) uri.toString() else uploadedUrl
 
             // Step 3: Save post to Firestore / Repository
             _uiState.value = NewPostUiState.Saving()
             try {
                 withContext(Dispatchers.IO) {
                     postRepository.createPost(
-                        imageUrl = imageUrl,
+                        imageUrl = uploadedUrl,
                         imagePath = storagePath,
                         caption = _caption.value.trim()
                     )
@@ -103,9 +115,16 @@ class NewPostViewModel(
                 _caption.value = ""
                 _uiState.value = NewPostUiState.Success
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 // If saving fails, attempt cleanup
                 withContext(Dispatchers.IO) {
-                    try { imageStorage.delete(storagePath) } catch (_: Exception) {}
+                    try {
+                        imageStorage.delete(storagePath)
+                    } catch (cleanupError: CancellationException) {
+                        throw cleanupError
+                    } catch (cleanupError: Exception) {
+                        e.addSuppressed(cleanupError)
+                    }
                 }
                 _uiState.value = NewPostUiState.Error("Couldn't save the post. Retry")
             }
