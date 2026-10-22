@@ -2,15 +2,15 @@ package vn.edu.usth.instaclone.ui.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import vn.edu.usth.instaclone.data.AppContainer
 import vn.edu.usth.instaclone.data.model.Post
-import vn.edu.usth.instaclone.data.repository.FakePostRepository
-import vn.edu.usth.instaclone.data.repository.PostRepository
 import vn.edu.usth.instaclone.data.repository.LikeRepository
-import vn.edu.usth.instaclone.data.repository.FakeLikeRepository
+import vn.edu.usth.instaclone.data.repository.PostImageCleanupException
+import vn.edu.usth.instaclone.data.repository.PostRepository
 class HomeFeedViewModel(
     private val postRepo: PostRepository = AppContainer.postRepository,
     private val likeRepo: LikeRepository = AppContainer.likeRepository,
@@ -61,6 +61,11 @@ class HomeFeedViewModel(
             try {
                 postRepo.deletePost(postId)
                 _posts.value = _posts.value.filter { it.id != postId }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: PostImageCleanupException) {
+                _posts.value = _posts.value.filter { it.id != postId }
+                _errorMessage.value = e.message
             } catch (e: Exception) {
                 _errorMessage.value = "Couldn't delete the post"
             }

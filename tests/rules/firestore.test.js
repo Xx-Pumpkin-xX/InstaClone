@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import assert from 'node:assert/strict';
 import {
   initializeTestEnvironment,
   assertSucceeds,
@@ -7,7 +8,10 @@ import {
 
 import {
   doc,
+  collection,
+  deleteDoc,
   getDoc,
+  getDocs,
   setDoc,
   updateDoc,
   writeBatch,
@@ -23,6 +27,20 @@ import {
 } from 'mocha';
 
 let env;
+
+function newPost(uid, postId) {
+  return {
+    authorId: uid,
+    authorUsername: uid,
+    authorAvatarUrl: '',
+    imageUrl: 'https://example.com/post.jpg',
+    imagePath: `images/posts/${uid}/${postId}.jpg`,
+    caption: 'Test post',
+    likeCount: 0,
+    commentCount: 0,
+    createdAt: serverTimestamp()
+  };
+}
 
 function newUser(username) {
   return {
@@ -43,6 +61,16 @@ async function register(db, uid, username) {
   batch.set(doc(db, 'users', uid), newUser(username));
   batch.set(doc(db, 'usernames', username), { uid });
 
+  return batch.commit();
+}
+
+async function createPost(db, uid, postId) {
+  const batch = writeBatch(db);
+  batch.set(doc(db, 'posts', postId), newPost(uid, postId));
+  batch.update(doc(db, 'users', uid), {
+    postCount: 1,
+    postMutationId: postId
+  });
   return batch.commit();
 }
 
@@ -150,6 +178,18 @@ describe('Users and usernames', () => {
     );
   });
 
+  it('denies incrementing postCount without creating a post', async () => {
+    const db = env.authenticatedContext('alice').firestore();
+    await register(db, 'alice', 'alice');
+
+    await assertFails(
+      updateDoc(doc(db, 'users', 'alice'), {
+        postCount: 1,
+        postMutationId: 'missing-post'
+      })
+    );
+  });
+
   it('cant not claim already username', async () => {
     const alice = env.authenticatedContext('alice').firestore();
     await register(alice, 'alice', 'alice');
@@ -157,8 +197,88 @@ describe('Users and usernames', () => {
     const bob = env.authenticatedContext('bob').firestore();
 
     await assertFails(register(bob, 'bob', 'alice'));
+  });
+});
+
+describe('Post creation and deletion', () => {
+  it('allows creating a post with its matching atomic post-count increment', async () => {
+    const db = env.authenticatedContext('alice').firestore();
+    await register(db, 'alice', 'alice');
+
+    await assertSucceeds(createPost(db, 'alice', 'post-1'));
+  });
+
+  it('denies creating a post without the matching post-count increment', async () => {
+    const db = env.authenticatedContext('alice').firestore();
+    await register(db, 'alice', 'alice');
+
+    await assertFails(
+      setDoc(doc(db, 'posts', 'post-1'), newPost('alice', 'post-1'))
+    );
+  });
+
+  it('denies creating a post for another member', async () => {
+    const db = env.authenticatedContext('alice').firestore();
+    await register(db, 'alice', 'alice');
+
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'posts', 'post-1'), newPost('bob', 'post-1'));
+    batch.update(doc(db, 'users', 'alice'), {
+      postCount: 1,
+      postMutationId: 'post-1'
     });
-  }
+    await assertFails(batch.commit());
+  });
+
+  it('allows deleting an own post with its matching atomic post-count decrement', async () => {
+    const db = env.authenticatedContext('alice').firestore();
+    await register(db, 'alice', 'alice');
+    await createPost(db, 'alice', 'post-1');
+
+    const batch = writeBatch(db);
+    batch.delete(doc(db, 'posts', 'post-1'));
+    batch.update(doc(db, 'users', 'alice'), {
+      postCount: 0,
+      postMutationId: 'post-1'
+    });
+    await assertSucceeds(batch.commit());
+  });
+
+  it('denies deleting another member post', async () => {
+    const alice = env.authenticatedContext('alice').firestore();
+    await register(alice, 'alice', 'alice');
+    await createPost(alice, 'alice', 'post-1');
+
+    const bob = env.authenticatedContext('bob').firestore();
+    await assertFails(deleteDoc(doc(bob, 'posts', 'post-1')));
+  });
+
+  it('allows the author to list and remove nested likes and comments', async () => {
+    const alice = env.authenticatedContext('alice').firestore();
+    await register(alice, 'alice', 'alice');
+    await createPost(alice, 'alice', 'post-1');
+    await env.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, 'posts', 'post-1', 'likes', 'bob'), {});
+      await setDoc(doc(db, 'posts', 'post-1', 'comments', 'comment-1'), {});
+    });
+
+    const likes = await getDocs(collection(alice, 'posts', 'post-1', 'likes'));
+    const comments = await getDocs(collection(alice, 'posts', 'post-1', 'comments'));
+    assert.equal(likes.size, 1);
+    assert.equal(comments.size, 1);
+    await assertSucceeds(deleteDoc(doc(alice, 'posts', 'post-1', 'likes', 'bob')));
+    await assertSucceeds(deleteDoc(doc(alice, 'posts', 'post-1', 'comments', 'comment-1')));
+  });
+
+  it('denies another member from listing the post author nested likes', async () => {
+    const alice = env.authenticatedContext('alice').firestore();
+    await register(alice, 'alice', 'alice');
+    await createPost(alice, 'alice', 'post-1');
+
+    const bob = env.authenticatedContext('bob').firestore();
+    await assertFails(getDocs(collection(bob, 'posts', 'post-1', 'likes')));
+  });
 });
 
 describe('Post author avatar updates', () => {

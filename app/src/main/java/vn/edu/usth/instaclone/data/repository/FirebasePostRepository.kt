@@ -5,10 +5,13 @@ import com.google.firebase.auth.auth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.firestore
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.tasks.await
 import vn.edu.usth.instaclone.data.model.Post
 
-class FirebasePostRepository : PostRepository {
+class FirebasePostRepository(
+    private val imageStorage: ImageStorage,
+) : PostRepository {
     private val db = Firebase.firestore
     private val auth = Firebase.auth
 
@@ -75,7 +78,9 @@ class FirebasePostRepository : PostRepository {
             ?: throw IllegalStateException("Must be signed in to create a post")
 
         val userDoc = db.collection("users").document(currentUser.uid).get().await()
-        val authorUsername = userDoc.getString("username") ?: currentUser.displayName ?: "user"
+        check(userDoc.exists()) { "Member profile not found" }
+        val authorUsername = userDoc.getString("username")
+            ?: throw IllegalStateException("Member username not found")
         val authorAvatarUrl = userDoc.getString("avatarUrl") ?: ""
 
         val postRef = db.collection("posts").document()
@@ -95,7 +100,13 @@ class FirebasePostRepository : PostRepository {
 
         val batch = db.batch()
         batch.set(postRef, postData)
-        batch.update(userRef, "postCount", FieldValue.increment(1))
+        batch.update(
+            userRef,
+            mapOf(
+                "postCount" to FieldValue.increment(1),
+                "postMutationId" to postRef.id,
+            ),
+        )
         batch.commit().await()
 
         return postRef.id
@@ -109,11 +120,52 @@ class FirebasePostRepository : PostRepository {
         val postDoc = postRef.get().await()
         if (!postDoc.exists()) return
 
+        check(postDoc.getString("authorId") == currentUser.uid) {
+            "Can only delete your own post"
+        }
+        val imagePath = postDoc.getString("imagePath").orEmpty()
+        if (imagePath.isNotBlank()) {
+            require(imagePath.startsWith("images/posts/${currentUser.uid}/")) {
+                "Post image path does not belong to its author"
+            }
+        }
+
+        val likes = postRef.collection("likes").get().await().documents
+        val comments = postRef.collection("comments").get().await().documents
+        (likes + comments).chunked(MAX_BATCH_WRITES).forEach { documents ->
+            val childBatch = db.batch()
+            documents.forEach { document -> childBatch.delete(document.reference) }
+            childBatch.commit().await()
+        }
+
         val userRef = db.collection("users").document(currentUser.uid)
 
         val batch = db.batch()
         batch.delete(postRef)
-        batch.update(userRef, "postCount", FieldValue.increment(-1))
+        batch.update(
+            userRef,
+            mapOf(
+                "postCount" to FieldValue.increment(-1),
+                "postMutationId" to postId,
+            ),
+        )
         batch.commit().await()
+
+        if (imagePath.isNotBlank()) {
+            try {
+                imageStorage.delete(imagePath)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                throw PostImageCleanupException(e)
+            }
+        }
+    }
+
+    private companion object {
+        const val MAX_BATCH_WRITES = 500
     }
 }
+
+class PostImageCleanupException(cause: Exception) :
+    Exception("Post deleted, but its photo could not be removed", cause)

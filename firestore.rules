@@ -30,7 +30,7 @@ service cloud.firestore {
       ([
         'username', 'displayName', 'bio', 'avatarUrl',
         'postCount', 'followerCount', 'followingCount',
-        'createdAt'
+        'createdAt', 'postMutationId'
       ])
 
       && validUsername(data.username)
@@ -45,6 +45,7 @@ service cloud.firestore {
       && data.postCount >= 0
       && data.followerCount >= 0
       && data.followingCount >= 0
+      && (!('postMutationId' in data) || data.postMutationId is string)
       && data.createdAt is timestamp;
     }
 
@@ -65,8 +66,39 @@ service cloud.firestore {
       //Các nhánh counter sẽ bổ sung riêng
       allow update: if owner(uid)
       && validUser(request.resource.data)
-      && request.resource.data.diff(resource.data).affectedKeys()
-        .hasOnly(['displayName', 'bio', 'avatarUrl']);
+      && (
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['displayName', 'bio', 'avatarUrl'])
+        ||
+        (
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['postCount', 'postMutationId'])
+          && request.resource.data.postMutationId is string
+          && request.resource.data.postCount == resource.data.postCount + 1
+          && existsAfter(
+            /databases/$(database)/documents/posts/$(request.resource.data.postMutationId)
+          )
+          && getAfter(
+            /databases/$(database)/documents/posts/$(request.resource.data.postMutationId)
+          ).data.authorId == uid
+        )
+        ||
+        (
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['postCount', 'postMutationId'])
+          && request.resource.data.postMutationId is string
+          && request.resource.data.postCount == resource.data.postCount - 1
+          && exists(
+            /databases/$(database)/documents/posts/$(request.resource.data.postMutationId)
+          )
+          && get(
+            /databases/$(database)/documents/posts/$(request.resource.data.postMutationId)
+          ).data.authorId == uid
+          && !existsAfter(
+            /databases/$(database)/documents/posts/$(request.resource.data.postMutationId)
+          )
+        )
+      );
 
       allow delete: if false;
     }
@@ -90,11 +122,71 @@ service cloud.firestore {
     match /posts/{postId} {
       allow read: if signedIn();
 
+      allow create: if signedIn()
+      && request.resource.data.keys().hasAll([
+        'authorId', 'authorUsername', 'authorAvatarUrl', 'imageUrl',
+        'imagePath', 'caption', 'likeCount', 'commentCount', 'createdAt'
+      ])
+      && request.resource.data.keys().hasOnly([
+        'authorId', 'authorUsername', 'authorAvatarUrl', 'imageUrl',
+        'imagePath', 'caption', 'likeCount', 'commentCount', 'createdAt'
+      ])
+      && owner(request.resource.data.authorId)
+      && request.resource.data.authorUsername is string
+      && request.resource.data.authorAvatarUrl is string
+      && request.resource.data.imageUrl is string
+      && request.resource.data.imagePath is string
+      && request.resource.data.imagePath.matches(
+        '^images/posts/' + request.auth.uid + '/[A-Za-z0-9_-]+[.]jpg$'
+      )
+      && request.resource.data.caption is string
+      && request.resource.data.caption.size() <= 2200
+      && request.resource.data.likeCount == 0
+      && request.resource.data.commentCount == 0
+      && request.resource.data.createdAt == request.time
+      && getAfter(
+        /databases/$(database)/documents/users/$(request.auth.uid)
+      ).data.postCount
+        == get(
+          /databases/$(database)/documents/users/$(request.auth.uid)
+        ).data.postCount + 1
+      && getAfter(
+        /databases/$(database)/documents/users/$(request.auth.uid)
+      ).data.postMutationId == postId;
+
+      allow delete: if owner(resource.data.authorId)
+      && exists(
+        /databases/$(database)/documents/users/$(resource.data.authorId)
+      )
+      && getAfter(
+        /databases/$(database)/documents/users/$(resource.data.authorId)
+      ).data.postCount
+        == get(
+          /databases/$(database)/documents/users/$(resource.data.authorId)
+        ).data.postCount - 1
+      && getAfter(
+        /databases/$(database)/documents/users/$(resource.data.authorId)
+      ).data.postMutationId == postId;
+
       allow update: if owner(resource.data.authorId)
       && request.resource.data.authorId == resource.data.authorId
       && request.resource.data.diff(resource.data).affectedKeys()
         .hasOnly(['authorAvatarUrl'])
       && request.resource.data.authorAvatarUrl is string;
+
+      match /likes/{likeId} {
+        allow read, delete: if signedIn()
+        && owner(get(
+          /databases/$(database)/documents/posts/$(postId)
+        ).data.authorId);
+      }
+
+      match /comments/{commentId} {
+        allow read, delete: if signedIn()
+        && owner(get(
+          /databases/$(database)/documents/posts/$(postId)
+        ).data.authorId);
+      }
     }
   }
 }
