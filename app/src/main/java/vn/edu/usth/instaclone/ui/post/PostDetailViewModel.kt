@@ -92,6 +92,19 @@ class PostDetailViewModel(
         }
     }
 
+    //(T-21): xóa bình luận của mình rồi tải lại danh sách
+    fun deleteComment(commentId: String) {
+        if (postId.isEmpty()) return
+        viewModelScope.launch {
+            try {
+                commentRepo.deleteComment(postId, commentId)
+                allComments = commentRepo.comments(postId)
+                publish()
+            } catch (e: Exception) {
+                _errorMessage.value = "Couldn't delete the comment"
+            }
+        }
+    }
     fun clearError() {
         _errorMessage.value = null
     }
