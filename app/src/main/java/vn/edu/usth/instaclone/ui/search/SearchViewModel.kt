@@ -58,7 +58,9 @@ class SearchViewModel(
         _uiState.update { state ->
             state.copy(
                 query = clippedQuery,
-                results = if (normalizedQuery.isEmpty()) emptyList() else state.results,
+                // A different query must not leave the previous results visible:
+                // they would still be tappable until the new search finishes.
+                results = if (isSameQuery) state.results else emptyList(),
                 isLoading = if (isSameQuery) state.isLoading else false,
                 notFound = if (isSameQuery) state.notFound else false,
                 errorMessage = if (isSameQuery) state.errorMessage else null,
