@@ -19,6 +19,8 @@ object Routes {
     const val EDIT_PROFILE = "edit_profile"
     const val CHAT = "chat/{userId}"
 
+    const val SETTINGS = "settings"
+
     //Helper fill in arg: Routes.postDetail("abc") --> "post/abc"
     fun postDetail(postId: String) = "post/$postId"
     fun profile(userId: String) = "profile/$userId"

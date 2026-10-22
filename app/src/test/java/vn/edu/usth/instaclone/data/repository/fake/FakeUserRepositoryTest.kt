@@ -39,4 +39,28 @@ class FakeUserRepositoryTest {
         assertTrue(results.size <= 1)
         assertEquals("tram", results.firstOrNull()?.username)
     }
+
+    @Test
+    fun searchByPrefix_returnsEmptyForBlankQuery() = runBlocking {
+        assertTrue(repository.searchByPrefix("   ").isEmpty())
+    }
+
+    @Test
+    fun searchByPrefix_returnsEmptyForNonPositiveLimit() = runBlocking {
+        assertTrue(repository.searchByPrefix("t", limit = 0).isEmpty())
+        assertTrue(repository.searchByPrefix("t", limit = -1).isEmpty())
+    }
+
+    @Test
+    fun searchByPrefix_sortsResultsByUsername() = runBlocking {
+        val results = repository.searchByPrefix("t")
+
+        assertEquals(listOf("thinh", "tram", "trang"), results.map { it.username })
+    }
+
+    @Test
+    fun searchByPrefix_matchesOnlyTheStartOfUsernames() = runBlocking {
+        assertTrue(repository.searchByPrefix("hong").isEmpty())
+        assertEquals("phong", repository.searchByPrefix("ph").firstOrNull()?.username)
+    }
 }

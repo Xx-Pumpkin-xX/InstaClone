@@ -13,6 +13,10 @@ import {
   getDocs,
   query,
   where,
+  orderBy,
+  startAt,
+  endAt,
+  limit,
   setDoc,
   updateDoc,
   deleteDoc,
@@ -136,6 +140,28 @@ describe('Users and usernames', () => {
     const bob = env.authenticatedContext('bob').firestore();
 
     await assertSucceeds(getDoc(doc(bob, 'users', 'alice')));
+  });
+
+  it('member can search users by username prefix, guest cannot', async () => {
+    const alice = env.authenticatedContext('alice').firestore();
+    await register(alice, 'alice', 'alice');
+
+    const bob = env.authenticatedContext('bob').firestore();
+    await register(bob, 'bob', 'bob');
+
+    const search = db => query(
+      collection(db, 'users'),
+      orderBy('username'),
+      startAt('bob'),
+      endAt('bob\uf8ff'),
+      limit(20)
+    );
+
+    const member = env.authenticatedContext('charlie').firestore();
+    await assertSucceeds(getDocs(search(member)));
+
+    const guest = env.unauthenticatedContext().firestore();
+    await assertFails(getDocs(search(guest)));
   });
 
   it('owner can update bio', async () => {

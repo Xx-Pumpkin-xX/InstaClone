@@ -10,7 +10,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import vn.edu.usth.instaclone.ui.common.PlaceholderScreen
 import vn.edu.usth.instaclone.ui.home.HomeFeedScreen
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
@@ -25,7 +24,9 @@ import vn.edu.usth.instaclone.ui.chat.ConversationListScreen
 import vn.edu.usth.instaclone.ui.profile.EditProfileScreen
 import vn.edu.usth.instaclone.ui.profile.ProfileScreen
 import vn.edu.usth.instaclone.ui.post.PostDetailScreen
+import vn.edu.usth.instaclone.ui.search.SearchScreen
 import vn.edu.usth.instaclone.ui.auth.LogoutDialog
+import vn.edu.usth.instaclone.ui.settings.SettingsScreen
 
 @Composable
 fun AppNavHost() {
@@ -86,7 +87,9 @@ fun AppNavHost() {
                     )
             }
             composable(Routes.SEARCH) {
-                PlaceholderScreen("S-08 Search", owner = "Trang . T-26")
+                SearchScreen(
+                    onUserClick = { uid -> navController.navigate(Routes.profile(uid)) },
+                )
             }
             composable(Routes.NEW_POST) {
                 vn.edu.usth.instaclone.ui.post.NewPostScreen(
@@ -111,6 +114,7 @@ fun AppNavHost() {
                         showBack = false,
                         onEditProfile = { navController.navigate(Routes.EDIT_PROFILE) },
                         onLogOut = {showLogout = true},
+                        onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                         onPostClick = {postId -> navController.navigate(Routes.postDetail(postId))},
                     )
                 }
@@ -138,6 +142,7 @@ fun AppNavHost() {
                     onBack = { navController.popBackStack() },
                     onEditProfile = { navController.navigate(Routes.EDIT_PROFILE) },
                     onLogOut = {showLogout = true},
+                    onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                     onPostClick = { postId -> navController.navigate(Routes.postDetail(postId)) },
                     onMessage = { uid -> navController.navigate(Routes.chat(uid)) },
                 )
@@ -153,6 +158,20 @@ fun AppNavHost() {
                     onBack = { navController.popBackStack() },
                     onSaved = { navController.popBackStack() },
                 )
+            }
+            composable(Routes.SETTINGS) {
+                var showLogout by rememberSaveable { mutableStateOf(false) }
+                SettingsScreen(
+                    onBack = { navController.popBackStack() },
+                    onEditProfile = { navController.navigate(Routes.EDIT_PROFILE) },
+                    onLogOut = { showLogout = true },          // same "Log out?" dialog as Profile
+                )
+                if (showLogout) {
+                    LogoutDialog(
+                        onConfirm = { showLogout = false; logOut() },
+                        onDismiss = { showLogout = false },
+                    )
+                }
             }
             composable(Routes.CHAT) { entry ->
                 val userId = entry.arguments?.getString("userId") ?: ""
