@@ -78,6 +78,7 @@ fun ProfileScreen(
     onBack: () -> Unit = {},
     onEditProfile: () -> Unit = {},
     onLogOut: () -> Unit = {},
+    onOpenSettings: () -> Unit = {},
     onPostClick: (String) -> Unit = {},
     onMessage: (String) -> Unit = {},
     viewModel: ProfileViewModel = viewModel(factory = ProfileViewModel.Factory(userId)),
@@ -168,6 +169,7 @@ fun ProfileScreen(
                         onFollowClick = viewModel::toggleFollow,
                         onEditProfile = onEditProfile,
                         onLogOut = onLogOut,
+                        onOpenSettings = onOpenSettings,
                         onPostClick = onPostClick,
                         onMessage = { onMessage(userId) },
                     )
@@ -193,6 +195,7 @@ private fun ProfileContent(
     onFollowClick: () -> Unit,
     onEditProfile: () -> Unit,
     onLogOut: () -> Unit,
+    onOpenSettings: () -> Unit = {},
     onPostClick: (String) -> Unit,
     onMessage: () -> Unit,
 ) {
@@ -213,6 +216,7 @@ private fun ProfileContent(
                 onFollowClick = onFollowClick,
                 onEditProfile = onEditProfile,
                 onLogOut = onLogOut,
+                onOpenSettings = onOpenSettings,
                 onMessage = onMessage,
             )
         }
@@ -244,6 +248,7 @@ private fun ProfileHeader(
     onFollowClick: () -> Unit,
     onEditProfile: () -> Unit,
     onLogOut: () -> Unit,
+    onOpenSettings: () -> Unit = {},
     onMessage: () -> Unit,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
@@ -318,6 +323,13 @@ private fun ProfileHeader(
                             onClick = {
                                 menuExpanded = false
                                 onLogOut()
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Settings") },
+                            onClick = {
+                                menuExpanded = false
+                                onOpenSettings()
                             },
                         )
                     }
