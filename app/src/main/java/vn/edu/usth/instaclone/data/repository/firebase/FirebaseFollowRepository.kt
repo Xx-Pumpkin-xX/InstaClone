@@ -17,6 +17,10 @@ import vn.edu.usth.instaclone.data.repository.FollowRepository
  * counters change by exactly +1 or -1 (NFR-06). The transaction reads every
  * document before writing, as Firestore requires.
  *
+ * T-08 rules require a `counterMutation` witness on both profile updates:
+ * `{kind: "follow", id: <other uid>}`. The witness proves which relationship
+ * changed in the same commit, so a counter cannot move on its own.
+ *
  * Writes require Firestore rules for the two follow subcollections and for the
  * counter increments. Until those rules are deployed, reads/writes are denied.
  */
@@ -60,8 +64,20 @@ class FirebaseFollowRepository : FollowRepository {
             val createdAt = FieldValue.serverTimestamp()
             transaction.set(followingRef, mapOf("createdAt" to createdAt))
             transaction.set(followerRef, mapOf("createdAt" to createdAt))
-            transaction.update(meRef, "followingCount", FieldValue.increment(1))
-            transaction.update(targetRef, "followerCount", FieldValue.increment(1))
+            transaction.update(
+                meRef,
+                mapOf(
+                    "followingCount" to FieldValue.increment(1),
+                    "counterMutation" to mapOf("kind" to "follow", "id" to targetUid),
+                ),
+            )
+            transaction.update(
+                targetRef,
+                mapOf(
+                    "followerCount" to FieldValue.increment(1),
+                    "counterMutation" to mapOf("kind" to "follow", "id" to me),
+                ),
+            )
         }.await()
     }
 
@@ -85,10 +101,23 @@ class FirebaseFollowRepository : FollowRepository {
 
             transaction.delete(followingRef)
             transaction.delete(followerRef)
-            transaction.update(meRef, "followingCount", FieldValue.increment(-1))
-            // The target account may have been deleted; removing the stale follow is still safe.
+            transaction.update(
+                meRef,
+                mapOf(
+                    "followingCount" to FieldValue.increment(-1),
+                    "counterMutation" to mapOf("kind" to "follow", "id" to targetUid),
+                ),
+            )
+            // User deletion is not supported. This guard avoids a null read; the T-08
+            // rules still require both profiles to change in the same commit.
             if (targetProfile.exists()) {
-                transaction.update(targetRef, "followerCount", FieldValue.increment(-1))
+                transaction.update(
+                    targetRef,
+                    mapOf(
+                        "followerCount" to FieldValue.increment(-1),
+                        "counterMutation" to mapOf("kind" to "follow", "id" to me),
+                    ),
+                )
             }
         }.await()
     }
