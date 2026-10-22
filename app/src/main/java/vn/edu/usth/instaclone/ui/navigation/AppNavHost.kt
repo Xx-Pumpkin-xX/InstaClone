@@ -23,6 +23,7 @@ import vn.edu.usth.instaclone.ui.auth.RegisterScreen
 import vn.edu.usth.instaclone.ui.chat.ChatScreen
 import vn.edu.usth.instaclone.ui.chat.ConversationListScreen
 import vn.edu.usth.instaclone.ui.profile.ProfileScreen
+import vn.edu.usth.instaclone.ui.post.PostDetailScreen
 import vn.edu.usth.instaclone.ui.auth.LogoutDialog
 
 @Composable
@@ -122,7 +123,10 @@ fun AppNavHost() {
             //----------Opened from other screens----------//
             composable(Routes.POST_DETAIL) { entry ->
                 val postId = entry.arguments?.getString("postId") ?: ""
-                PlaceholderScreen("S-05 Post: $postId", owner = "Tram . T-20")
+                PostDetailScreen(
+                    postId = postId,
+                    onBack = { navController.popBackStack() },
+                )
             }
             composable(Routes.PROFILE) { entry ->
                 val userId = entry.arguments?.getString("userId") ?: ""
