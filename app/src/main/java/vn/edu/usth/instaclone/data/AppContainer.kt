@@ -13,7 +13,7 @@ import vn.edu.usth.instaclone.data.repository.ImageStorage
 import vn.edu.usth.instaclone.data.repository.PostRepository
 import vn.edu.usth.instaclone.data.repository.LikeRepository
 import vn.edu.usth.instaclone.data.repository.UserRepository
-import vn.edu.usth.instaclone.data.repository.fake.FakeChatRepository
+import vn.edu.usth.instaclone.data.repository.firebase.FirebaseChatRepository
 import vn.edu.usth.instaclone.data.repository.firebase.FirebaseAuthRepository
 import vn.edu.usth.instaclone.data.repository.firebase.FirebaseFollowRepository
 import vn.edu.usth.instaclone.data.repository.firebase.FirebaseUserRepository
@@ -21,7 +21,7 @@ import vn.edu.usth.instaclone.data.repository.firebase.FirebaseUserRepository
 object AppContainer {
     private val fakePostRepository by lazy { FakePostRepository() }
     val authRepository: AuthRepository by lazy { FirebaseAuthRepository() }
-    val chatRepository: ChatRepository by lazy { FakeChatRepository() }
+    val chatRepository: ChatRepository by lazy { FirebaseChatRepository() }
     val postRepository: PostRepository by lazy { FirebasePostRepository(imageStorage) }
     val userRepository: UserRepository by lazy { FirebaseUserRepository() }
     val followRepository: FollowRepository by lazy { FirebaseFollowRepository() }

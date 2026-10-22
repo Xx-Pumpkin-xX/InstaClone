@@ -8,7 +8,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -18,6 +17,7 @@ import vn.edu.usth.instaclone.data.model.Message
 import vn.edu.usth.instaclone.data.model.User
 import vn.edu.usth.instaclone.data.repository.AuthRepository
 import vn.edu.usth.instaclone.data.repository.ChatRepository
+import vn.edu.usth.instaclone.data.repository.UserRepository
 import java.util.UUID
 
 const val MAX_MESSAGE_LENGTH = 1_000
@@ -41,9 +41,10 @@ data class ChatUiState(
     val isLoadingOlder: Boolean = false,
     val reachedStart: Boolean = false,
     val errorMessage: String? = null,
+    val userNotFound: Boolean = false,
 ) {
     val draftLength: Int get() = draft.trim().length
-    val canSend: Boolean get() = draftLength in 1..MAX_MESSAGE_LENGTH
+    val canSend: Boolean get() = draftLength in 1..MAX_MESSAGE_LENGTH && !userNotFound
 }
 
 private data class PendingMessage(val localId: String, val text: String, val failed: Boolean = false)
@@ -53,6 +54,7 @@ class ChatViewModel(
     private val otherUserId: String,
     private val chatRepository: ChatRepository = AppContainer.chatRepository,
     private val authRepository: AuthRepository = AppContainer.authRepository,
+    private val userRepository: UserRepository = AppContainer.userRepository,
 ) : ViewModel() {
     private val myId: String get() = authRepository.currentUserId.value ?: "me"
     private val conversationId = chatRepository.conversationId(myId, otherUserId)
@@ -88,16 +90,17 @@ class ChatViewModel(
                     base.update { s -> s.copy(isLoading = false) }
                 }
         }
-        // Username for the top bar. TODO: switch to AppContainer.userRepository.getUser(otherUserId)
-        // when Trang/Đạt's UserRepository is registered, and show "User not found" (UC-14 2b) if it returns null.
+        // Username for the top bar, and UC-14 2b: "User not found" when the account no longer exists.
         viewModelScope.launch {
-            runCatching {
-                chatRepository.conversations().first()
-                    .firstOrNull { it.id == conversationId }
-                    ?.otherUsername(myId)
-            }.getOrNull()?.takeIf { it.isNotBlank() }?.let { name ->
-                base.update { s -> s.copy(otherUsername = name) }
-            }
+            runCatching { userRepository.getUser(otherUserId) }
+                .onSuccess { user ->
+                    if (user == null) {
+                        base.update { s -> s.copy(isLoading = false, errorMessage = "User not found", userNotFound = true) }
+                    } else if (user.username.isNotBlank()) {
+                        base.update { s -> s.copy(otherUsername = user.username) }
+                    }
+                }
+            // On a network error we keep the uid as a fallback title; sending still works.
         }
     }
 
