@@ -95,6 +95,7 @@ class FirebaseChatRepository : ChatRepository {
                 "lastMessageText" to text,
                 "lastMessageAt" to FieldValue.serverTimestamp(),
                 "lastSenderId" to me,
+                "lastMessageId" to messageRef.id,
             ), SetOptions.merge())
             .commit()
             .await()

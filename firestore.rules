@@ -1,204 +1,208 @@
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    function signedIn() {
-      return request.auth != null;
+    function signedIn() { return request.auth != null; }
+    function owner(uid) { return signedIn() && request.auth.uid == uid; }
+    function userPath(uid) { return /databases/$(database)/documents/users/$(uid); }
+    function postPath(id) { return /databases/$(database)/documents/posts/$(id); }
+    function validUsername(s) { return s is string && s.matches('^[a-z0-9_.]{3,30}$'); }
+    function text(s, max) { return s is string && s.size() <= max; }
+    function nonblank(s, max) { return text(s, max) && s.matches('[\\s\\S]*[^\\s][\\s\\S]*'); }
+    function validUser(d) {
+      return d.keys().hasAll(['username','displayName','bio','avatarUrl','postCount','followerCount','followingCount','createdAt'])
+        && d.keys().hasOnly(['username','displayName','bio','avatarUrl','postCount','followerCount','followingCount','createdAt','counterMutation'])
+        && validUsername(d.username) && text(d.displayName,30) && text(d.bio,150) && d.avatarUrl is string
+        && d.postCount is int && d.postCount >= 0 && d.followerCount is int && d.followerCount >= 0
+        && d.followingCount is int && d.followingCount >= 0 && d.createdAt is timestamp;
     }
-
-    function owner(uid) {
-      return signedIn() && request.auth.uid == uid;
+    // A witness identifies the exact document whose existence changes in this batch.
+    function mutation(m, kind) {
+      return m is map && m.keys().hasOnly(['kind','id']) && m.keys().hasAll(['kind','id'])
+        && m.kind == kind && m.id is string && m.id.size() > 0;
     }
-
-    //username chữ thường, số, dấu gạch dưới
-    //dài 3–30 ký tự
-    function validUsername(username) {
-      return username is string
-      && username.matches('^[a-z0-9_.]{3,30}$');
+    function postCounter(uid) {
+      let m = request.resource.data.counterMutation;
+      let p = postPath(m.id);
+      return owner(uid) && mutation(m,'post')
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['postCount','counterMutation'])
+        && ((!exists(p) && getAfter(p).data.authorId == uid
+          && request.resource.data.postCount == resource.data.postCount + 1)
+        || (get(p).data.authorId == uid && !existsAfter(p)
+          && request.resource.data.postCount == resource.data.postCount - 1));
     }
-
-    function validUser(data) {
-      return data.keys().hasAll
-      ([
-        'username', 'displayName', 'bio', 'avatarUrl',
-        'postCount', 'followerCount', 'followingCount',
-        'createdAt'
-      ])
-
-      && data.keys().hasOnly
-      ([
-        'username', 'displayName', 'bio', 'avatarUrl',
-        'postCount', 'followerCount', 'followingCount',
-        'createdAt'
-      ])
-
-      && validUsername(data.username)
-      && data.displayName is string
-      && data.displayName.size() <= 30
-      && data.bio is string
-      && data.bio.size() <= 150
-      && data.avatarUrl is string
-      && data.postCount is int
-      && data.followerCount is int
-      && data.followingCount is int
-      && data.postCount >= 0
-      && data.followerCount >= 0
-      && data.followingCount >= 0
-      && data.createdAt is timestamp;
+    function followCounter(uid, incoming) {
+      let m = request.resource.data.counterMutation;
+      let actor = incoming ? m.id : uid;
+      let target = incoming ? uid : m.id;
+      let a = /databases/$(database)/documents/users/$(actor)/following/$(target);
+      let b = /databases/$(database)/documents/users/$(target)/followers/$(actor);
+      let field = incoming ? 'followerCount' : 'followingCount';
+      return owner(actor) && actor != target && mutation(m,'follow')
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([field,'counterMutation'])
+        && ((!exists(a) && !exists(b) && existsAfter(a) && existsAfter(b)
+          && request.resource.data[field] == resource.data[field] + 1)
+        || (exists(a) && exists(b) && !existsAfter(a) && !existsAfter(b)
+          && request.resource.data[field] == resource.data[field] - 1));
     }
-
     match /users/{uid} {
       allow read: if signedIn();
-
-      allow create: if owner(uid)
-      && validUser(request.resource.data)
-      && request.resource.data.postCount == 0
-      && request.resource.data.followerCount == 0
-      && request.resource.data.followingCount == 0
-      && request.resource.data.createdAt == request.time
-      && getAfter(
-        /databases/$(database)/documents/usernames/$(request.resource.data.username)
-      ).data.uid == uid;
-
-      //Chỉ nhánh chỉnh sửa hồ sơ
-      //Các nhánh counter sẽ bổ sung riêng
-      allow update: if owner(uid)
-      && validUser(request.resource.data)
-      && request.resource.data.diff(resource.data).affectedKeys()
-        .hasOnly(['displayName', 'bio', 'avatarUrl']);
-
-      // Follow counter: a member may change their own followingCount by exactly +1 or -1.
-      allow update: if owner(uid)
-      && validUser(request.resource.data)
-      && request.resource.data.diff(resource.data).affectedKeys()
-        .hasOnly(['followingCount'])
-      && (
-        request.resource.data.followingCount == resource.data.followingCount + 1
-        || request.resource.data.followingCount == resource.data.followingCount - 1
-      );
-
-      // Follower counter: another member may change it by exactly +1 or -1, but only
-      // when their own follower record is created or deleted in the same transaction.
-      allow update: if signedIn()
-      && request.auth.uid != uid
-      && validUser(request.resource.data)
-      && request.resource.data.diff(resource.data).affectedKeys()
-        .hasOnly(['followerCount'])
-      && (
-        (
-          request.resource.data.followerCount == resource.data.followerCount + 1
-          && existsAfter(
-            /databases/$(database)/documents/users/$(uid)/followers/$(request.auth.uid)
-          )
-        )
-        || (
-          request.resource.data.followerCount == resource.data.followerCount - 1
-          && !existsAfter(
-            /databases/$(database)/documents/users/$(uid)/followers/$(request.auth.uid)
-          )
-        )
-      );
-
+      allow create: if owner(uid) && validUser(request.resource.data)
+        && !request.resource.data.keys().hasAny(['counterMutation'])
+        && request.resource.data.postCount == 0 && request.resource.data.followerCount == 0
+        && request.resource.data.followingCount == 0 && request.resource.data.createdAt == request.time
+        && getAfter(/databases/$(database)/documents/usernames/$(request.resource.data.username)).data.uid == uid;
+      allow update: if signedIn() && validUser(request.resource.data) && (
+        (owner(uid) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName','bio','avatarUrl']))
+        || postCounter(uid) || followCounter(uid,false) || followCounter(uid,true));
       allow delete: if false;
+      match /following/{target} {
+        allow read: if signedIn();
+        allow create: if followWrite(uid,target,true);
+        allow delete: if followWrite(uid,target,false);
+      }
+      match /followers/{actor} {
+        allow read: if signedIn();
+        allow create: if followWrite(actor,uid,true);
+        allow delete: if followWrite(actor,uid,false);
+      }
     }
-
-    // users/{me}/following/{them}: only the follower may read or write it, and the
-    // reciprocal followers document and both counters must change in the same commit.
-    match /users/{uid}/following/{targetUid} {
-      allow read: if signedIn() && request.auth.uid == uid;
-
-      allow create: if signedIn()
-      && request.auth.uid == uid
-      && targetUid != uid
-      && request.resource.data.keys().hasOnly(['createdAt'])
-      && request.resource.data.createdAt == request.time
-      && exists(/databases/$(database)/documents/users/$(targetUid))
-      && existsAfter(
-        /databases/$(database)/documents/users/$(targetUid)/followers/$(uid)
-      )
-      && getAfter(
-        /databases/$(database)/documents/users/$(uid)
-      ).data.followingCount == get(
-        /databases/$(database)/documents/users/$(uid)
-      ).data.followingCount + 1
-      && getAfter(
-        /databases/$(database)/documents/users/$(targetUid)
-      ).data.followerCount == get(
-        /databases/$(database)/documents/users/$(targetUid)
-      ).data.followerCount + 1;
-
-      allow delete: if signedIn()
-      && request.auth.uid == uid
-      && !existsAfter(
-        /databases/$(database)/documents/users/$(targetUid)/followers/$(uid)
-      )
-      && getAfter(
-        /databases/$(database)/documents/users/$(uid)
-      ).data.followingCount == get(
-        /databases/$(database)/documents/users/$(uid)
-      ).data.followingCount - 1
-      && (
-        !exists(/databases/$(database)/documents/users/$(targetUid))
-        || getAfter(
-          /databases/$(database)/documents/users/$(targetUid)
-        ).data.followerCount == get(
-          /databases/$(database)/documents/users/$(targetUid)
-        ).data.followerCount - 1
-      );
-
-      allow update: if false;
+    function followWrite(actor,target,adding) {
+      let a = /databases/$(database)/documents/users/$(actor)/following/$(target);
+      let b = /databases/$(database)/documents/users/$(target)/followers/$(actor);
+      let u = getAfter(userPath(actor)).data;
+      let v = getAfter(userPath(target)).data;
+      let delta = adding ? 1 : -1;
+      return owner(actor) && actor != target
+        && mutation(u.counterMutation,'follow') && u.counterMutation.id == target
+        && mutation(v.counterMutation,'follow') && v.counterMutation.id == actor
+        && u.followingCount == get(userPath(actor)).data.followingCount + delta
+        && v.followerCount == get(userPath(target)).data.followerCount + delta
+        && (adding ? (!exists(a) && !exists(b) && existsAfter(a) && existsAfter(b)
+          && request.resource.data.keys().hasOnly(['createdAt']) && request.resource.data.keys().hasAll(['createdAt'])
+          && request.resource.data.createdAt == request.time)
+        : (exists(a) && exists(b) && !existsAfter(a) && !existsAfter(b)));
     }
-
-    // users/{them}/followers/{me}: only the follower may create or delete it; the
-    // target and the follower may read it.
-    match /users/{uid}/followers/{followerUid} {
-      allow read: if signedIn()
-      && (request.auth.uid == uid || request.auth.uid == followerUid);
-
-      allow create: if signedIn()
-      && followerUid == request.auth.uid
-      && uid != followerUid
-      && request.resource.data.keys().hasOnly(['createdAt'])
-      && request.resource.data.createdAt == request.time
-      && exists(/databases/$(database)/documents/users/$(uid))
-      && existsAfter(
-        /databases/$(database)/documents/users/$(followerUid)/following/$(uid)
-      );
-
-      allow delete: if signedIn()
-      && followerUid == request.auth.uid
-      && !existsAfter(
-        /databases/$(database)/documents/users/$(followerUid)/following/$(uid)
-      );
-
-      allow update: if false;
-    }
-
     match /usernames/{username} {
       allow read: if signedIn();
-
-      allow create: if signedIn()
-      && validUsername(username)
-      && request.resource.data.keys().hasAll(['uid'])
-      && request.resource.data.keys().hasOnly(['uid'])
-      && request.resource.data.uid is string
-      && request.resource.data.uid == request.auth.uid
-      && getAfter(
-        /databases/$(database)/documents/users/$(request.auth.uid)
-      ).data.username == username;
-
-      allow update, delete: if false;
+      allow create: if signedIn() && validUsername(username)
+        && request.resource.data.keys().hasOnly(['uid']) && request.resource.data.keys().hasAll(['uid'])
+        && request.resource.data.uid == request.auth.uid
+        && getAfter(userPath(request.auth.uid)).data.username == username;
     }
-
-    match /posts/{postId} {
+    function validPost(d) {
+      return d.keys().hasAll(['authorId','authorUsername','authorAvatarUrl','imageUrl','imagePath','caption','likeCount','commentCount','createdAt'])
+        && d.keys().hasOnly(['authorId','authorUsername','authorAvatarUrl','imageUrl','imagePath','caption','likeCount','commentCount','createdAt','commentMutation'])
+        && d.authorId is string && validUsername(d.authorUsername) && d.authorAvatarUrl is string
+        && d.imageUrl is string && d.imagePath is string && text(d.caption,2200)
+        && d.likeCount is int && d.likeCount >= 0 && d.commentCount is int && d.commentCount >= 0 && d.createdAt is timestamp;
+    }
+    function postUserWitness(id,uid,delta) {
+      let u = getAfter(userPath(uid)).data;
+      return mutation(u.counterMutation,'post') && u.counterMutation.id == id
+        && u.postCount == get(userPath(uid)).data.postCount + delta;
+    }
+    function likeCounter(id) {
+      let p = /databases/$(database)/documents/posts/$(id)/likes/$(request.auth.uid);
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likeCount'])
+        && ((!exists(p) && existsAfter(p) && request.resource.data.likeCount == resource.data.likeCount + 1)
+        || (exists(p) && !existsAfter(p) && request.resource.data.likeCount == resource.data.likeCount - 1));
+    }
+    function commentCounter(id) {
+      let m = request.resource.data.commentMutation;
+      let p = /databases/$(database)/documents/posts/$(id)/comments/$(m.id);
+      return mutation(m,'comment')
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['commentCount','commentMutation'])
+        && ((!exists(p) && getAfter(p).data.authorId == request.auth.uid
+          && request.resource.data.commentCount == resource.data.commentCount + 1)
+        || (get(p).data.authorId == request.auth.uid && !existsAfter(p)
+          && request.resource.data.commentCount == resource.data.commentCount - 1));
+    }
+    match /posts/{id} {
       allow read: if signedIn();
-
-      allow update: if owner(resource.data.authorId)
-      && request.resource.data.authorId == resource.data.authorId
-      && request.resource.data.diff(resource.data).affectedKeys()
-        .hasOnly(['authorAvatarUrl'])
-      && request.resource.data.authorAvatarUrl is string;
+      allow create: if signedIn() && validPost(request.resource.data) && owner(request.resource.data.authorId)
+        && !request.resource.data.keys().hasAny(['commentMutation'])
+        && request.resource.data.authorUsername == get(userPath(request.auth.uid)).data.username
+        && request.resource.data.authorAvatarUrl == get(userPath(request.auth.uid)).data.avatarUrl
+        && request.resource.data.imagePath.split('/').size() == 4
+        && request.resource.data.imagePath.split('/')[0] == 'images'
+        && request.resource.data.imagePath.split('/')[1] == 'posts'
+        && request.resource.data.imagePath.split('/')[2] == request.auth.uid
+        && request.resource.data.imagePath.split('/')[3].matches('^[A-Za-z0-9_-]+[.](jpg|png)$')
+        && request.resource.data.likeCount == 0 && request.resource.data.commentCount == 0
+        && request.resource.data.createdAt == request.time && postUserWitness(id,request.auth.uid,1);
+      allow update: if signedIn() && validPost(request.resource.data) && (
+        (owner(resource.data.authorId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['authorAvatarUrl'])
+          && request.resource.data.authorAvatarUrl == get(userPath(request.auth.uid)).data.avatarUrl)
+        || likeCounter(id) || commentCounter(id));
+      allow delete: if owner(resource.data.authorId) && postUserWitness(id,request.auth.uid,-1);
+      match /likes/{uid} {
+        allow read: if signedIn();
+        allow create: if owner(uid) && exists(postPath(id))
+          && request.resource.data.keys().hasOnly(['createdAt']) && request.resource.data.keys().hasAll(['createdAt'])
+          && request.resource.data.createdAt == request.time
+          && getAfter(postPath(id)).data.likeCount == get(postPath(id)).data.likeCount + 1;
+        allow delete: if owner(uid) && (!existsAfter(postPath(id))
+          || getAfter(postPath(id)).data.likeCount == get(postPath(id)).data.likeCount - 1)
+          || (owner(uid) && !exists(postPath(id)));
+      }
+      match /comments/{cid} {
+        allow read: if signedIn();
+        allow create: if signedIn() && exists(postPath(id))
+          && request.resource.data.keys().hasOnly(['authorId','authorUsername','text','createdAt'])
+          && request.resource.data.keys().hasAll(['authorId','authorUsername','text','createdAt'])
+          && owner(request.resource.data.authorId)
+          && request.resource.data.authorUsername == get(userPath(request.auth.uid)).data.username
+          && nonblank(request.resource.data.text,500) && request.resource.data.createdAt == request.time
+          && commentWitness(id,cid,1);
+        allow delete: if (owner(resource.data.authorId) && commentWitness(id,cid,-1))
+          || (owner(resource.data.authorId) && !exists(postPath(id)));
+      }
+    }
+    function commentWitness(id,cid,delta) {
+      let d = getAfter(postPath(id)).data;
+      return mutation(d.commentMutation,'comment') && d.commentMutation.id == cid
+        && d.commentCount == get(postPath(id)).data.commentCount + delta;
+    }
+    function participant(d) { return signedIn() && request.auth.uid in d.participants; }
+    function validConversation(d,id) {
+      return d.keys().hasOnly(['participants','participantUsernames','lastMessageText','lastMessageAt','lastSenderId','lastMessageId'])
+        && d.keys().hasAll(['participants','participantUsernames','lastMessageText','lastMessageAt','lastSenderId','lastMessageId'])
+        && d.participants is list && d.participants.size() == 2
+        && d.participants[0] is string && d.participants[1] is string && d.participants[0] < d.participants[1]
+        && id == d.participants[0] + '_' + d.participants[1]
+        && d.participantUsernames is map && d.participantUsernames.keys().hasOnly(d.participants)
+        && d.participantUsernames.keys().hasAll(d.participants)
+        && d.participantUsernames[d.participants[0]] == get(userPath(d.participants[0])).data.username
+        && d.participantUsernames[d.participants[1]] == get(userPath(d.participants[1])).data.username
+        && nonblank(d.lastMessageText,1000) && d.lastMessageAt == request.time
+        && d.lastSenderId == request.auth.uid && d.lastMessageId is string;
+    }
+    function summaryMessage(d,id) {
+      let p = /databases/$(database)/documents/conversations/$(id)/messages/$(d.lastMessageId);
+      let m = getAfter(p).data;
+      return !exists(p) && m.senderId == request.auth.uid && m.text == d.lastMessageText && m.createdAt == request.time;
+    }
+    match /conversations/{id} {
+      allow read: if participant(resource.data);
+      allow create: if participant(request.resource.data) && validConversation(request.resource.data,id)
+        && summaryMessage(request.resource.data,id);
+      allow update: if participant(resource.data) && validConversation(request.resource.data,id)
+        && request.resource.data.participants == resource.data.participants
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['participantUsernames','lastMessageText','lastMessageAt','lastSenderId','lastMessageId'])
+        && summaryMessage(request.resource.data,id);
+      match /messages/{mid} {
+        allow read: if participant(get(/databases/$(database)/documents/conversations/$(id)).data);
+        allow create: if signedIn()
+          && participant(getAfter(/databases/$(database)/documents/conversations/$(id)).data)
+          && request.resource.data.keys().hasOnly(['senderId','text','createdAt'])
+          && request.resource.data.keys().hasAll(['senderId','text','createdAt'])
+          && owner(request.resource.data.senderId) && nonblank(request.resource.data.text,1000)
+          && request.resource.data.createdAt == request.time
+          && getAfter(/databases/$(database)/documents/conversations/$(id)).data.lastMessageId == mid
+          && getAfter(/databases/$(database)/documents/conversations/$(id)).data.lastMessageText == request.resource.data.text
+          && getAfter(/databases/$(database)/documents/conversations/$(id)).data.lastSenderId == request.auth.uid;
+      }
     }
   }
 }
