@@ -7,12 +7,13 @@ import kotlinx.coroutines.flow.update
 import vn.edu.usth.instaclone.data.AppContainer
 import vn.edu.usth.instaclone.data.model.User
 import vn.edu.usth.instaclone.data.repository.UserRepository
+import java.util.Locale
 
 /**
  * Fake UserRepository (T-23): in-memory users so S-06 can be built and tested without Firebase.
  *
  * The signed-in member gets a demo profile on first read, so the Profile tab is never empty.
- * Search and profile editing are only minimal implementations here; FR-16/FR-17 extend them.
+ * Search and profile editing are lightweight in-memory implementations.
  */
 class FakeUserRepository(
     private val myId: () -> String = {
@@ -25,7 +26,7 @@ class FakeUserRepository(
 
     override suspend fun claimUsername(uid: String, username: String) {
         waitForNetwork()
-        val handle = username.lowercase()
+        val handle = username.lowercase(Locale.ROOT)
         val taken = users.value.values.any { it.username == handle && it.id != uid }
         if (taken) throw IllegalStateException("Username already taken")
 
@@ -80,8 +81,8 @@ class FakeUserRepository(
 
     override suspend fun searchByPrefix(prefix: String, limit: Int): List<User> {
         waitForNetwork()
-        val query = prefix.trim().lowercase()
-        if (query.isEmpty()) return emptyList()
+        val query = prefix.trim().lowercase(Locale.ROOT)
+        if (query.isEmpty() || limit <= 0) return emptyList()
         return users.value.values
             .filter { it.username.startsWith(query) }
             .sortedBy { it.username }
