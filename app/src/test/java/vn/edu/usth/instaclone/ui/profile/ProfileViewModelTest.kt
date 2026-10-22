@@ -141,7 +141,6 @@ class ProfileViewModelTest {
         override suspend fun createPost(imageUrl: String, imagePath: String, caption: String): String = ""
 
         override suspend fun deletePost(postId: String) = Unit
-
     }
 
     private class FailingUserRepository(private val failure: Exception) : UserRepository {
