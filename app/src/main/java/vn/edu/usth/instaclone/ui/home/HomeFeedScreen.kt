@@ -33,6 +33,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -71,6 +72,7 @@ fun HomeFeedScreen(
     val isLoadingMore by viewModel.isLoadingMore.collectAsState()
     val likedPostIds by viewModel.likedPostIds.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
+    val cleanupRetryPostId by viewModel.cleanupRetryPostId.collectAsState()
     val context = LocalContext.current
     val isOnline by remember { observeOnline(context) }.collectAsState(initial = true)
     val listState = rememberLazyListState()
@@ -84,10 +86,20 @@ fun HomeFeedScreen(
     }
 
     // Show error snackbar if any operation fails
-    LaunchedEffect(errorMessage) {
-        errorMessage?.let {
-            snackbarHostState.showSnackbar(it)
-            viewModel.clearError()
+    LaunchedEffect(errorMessage, cleanupRetryPostId) {
+        errorMessage?.let { message ->
+            val result = snackbarHostState.showSnackbar(
+                message = message,
+                actionLabel = cleanupRetryPostId?.let {
+                    context.getString(R.string.home_retry_cleanup)
+                },
+                withDismissAction = cleanupRetryPostId != null,
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                cleanupRetryPostId?.let(viewModel::retryPostCleanup)
+            } else {
+                viewModel.clearError()
+            }
         }
     }
 

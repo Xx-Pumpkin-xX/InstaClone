@@ -9,8 +9,9 @@ import kotlinx.coroutines.launch
 import vn.edu.usth.instaclone.data.AppContainer
 import vn.edu.usth.instaclone.data.model.Post
 import vn.edu.usth.instaclone.data.repository.LikeRepository
-import vn.edu.usth.instaclone.data.repository.PostImageCleanupException
+import vn.edu.usth.instaclone.data.repository.PostDeletionCleanupException
 import vn.edu.usth.instaclone.data.repository.PostRepository
+
 class HomeFeedViewModel(
     private val postRepo: PostRepository = AppContainer.postRepository,
     private val likeRepo: LikeRepository = AppContainer.likeRepository,
@@ -28,6 +29,9 @@ class HomeFeedViewModel(
     // thông báo lỗi (null = không có lỗi)
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage
+
+    private val _cleanupRetryPostId = MutableStateFlow<String?>(null)
+    val cleanupRetryPostId: StateFlow<String?> = _cleanupRetryPostId
 
     // bài nào mình đã tim (lưu id)
     private val _likedPostIds = MutableStateFlow<Set<String>>(emptySet())
@@ -48,6 +52,16 @@ class HomeFeedViewModel(
         viewModelScope.launch {
             _isRefreshing.value = true
             try {
+                try {
+                    postRepo.retryPendingPostCleanups()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: PostDeletionCleanupException) {
+                    _errorMessage.value = e.message
+                    _cleanupRetryPostId.value = e.postId
+                } catch (e: Exception) {
+                    _errorMessage.value = "Couldn't retry pending post cleanup"
+                }
                 val firstPage = postRepo.feedPage(after = null, limit = PAGE_SIZE)
                 val liked = loadLikedIds(firstPage)
                 _posts.value = firstPage
@@ -69,17 +83,24 @@ class HomeFeedViewModel(
                 _posts.value = _posts.value.filter { it.id != postId }
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: PostImageCleanupException) {
+            } catch (e: PostDeletionCleanupException) {
                 _posts.value = _posts.value.filter { it.id != postId }
                 _errorMessage.value = e.message
+                _cleanupRetryPostId.value = e.postId
             } catch (e: Exception) {
                 _errorMessage.value = "Couldn't delete the post"
             }
         }
     }
 
+    fun retryPostCleanup(postId: String) {
+        clearError()
+        deletePost(postId)
+    }
+
     fun clearError() {
         _errorMessage.value = null
+        _cleanupRetryPostId.value = null
     }
 
     fun loadMore() {

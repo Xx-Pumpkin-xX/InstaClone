@@ -11,6 +11,8 @@ import {
   collection,
   getDoc,
   getDocs,
+  query,
+  where,
   setDoc,
   updateDoc,
   deleteDoc,
@@ -219,10 +221,11 @@ describe('Post creation and deletion', () => {
     await assertFails(batch.commit());
   });
 
-  it('allows deleting an own post with its matching atomic post-count decrement', async () => {
+  it('allows deleting an own post with an atomic count decrement and cleanup marker', async () => {
     const db = env.authenticatedContext('alice').firestore();
     await register(db, 'alice', 'alice');
     await createPost(db, 'alice', 'post-1');
+    await assertSucceeds(getDoc(doc(db, 'postDeletionCleanup', 'not-created-yet')));
 
     const batch = writeBatch(db);
     batch.delete(doc(db, 'posts', 'post-1'));
@@ -230,7 +233,44 @@ describe('Post creation and deletion', () => {
       postCount: 0,
       counterMutation: { kind: 'post', id: 'post-1' }
     });
+    batch.set(doc(db, 'postDeletionCleanup', 'post-1'), {
+      authorId: 'alice',
+      imagePath: 'images/posts/alice/post-1.jpg'
+    });
     await assertSucceeds(batch.commit());
+    await assertSucceeds(getDocs(query(
+      collection(db, 'postDeletionCleanup'),
+      where('authorId', '==', 'alice')
+    )));
+  });
+
+  it('rejects post deletion without the cleanup marker and preserves the post', async () => {
+    const db = env.authenticatedContext('alice').firestore();
+    await register(db, 'alice', 'alice');
+    await createPost(db, 'alice', 'post-1');
+    await env.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'posts', 'post-1', 'likes', 'bob'), {
+        createdAt: serverTimestamp()
+      });
+      await setDoc(doc(context.firestore(), 'posts', 'post-1', 'comments', 'comment-1'), {
+        authorId: 'bob',
+        authorUsername: 'bob',
+        text: 'Nice',
+        createdAt: serverTimestamp()
+      });
+    });
+
+    const batch = writeBatch(db);
+    batch.delete(doc(db, 'posts', 'post-1'));
+    batch.update(doc(db, 'users', 'alice'), {
+      postCount: 0,
+      counterMutation: { kind: 'post', id: 'post-1' }
+    });
+    await assertFails(batch.commit());
+    assert.equal((await getDoc(doc(db, 'posts', 'post-1'))).exists(), true);
+    assert.equal((await getDoc(doc(db, 'users', 'alice'))).data().postCount, 1);
+    assert.equal((await getDoc(doc(db, 'posts', 'post-1', 'likes', 'bob'))).exists(), true);
+    assert.equal((await getDoc(doc(db, 'posts', 'post-1', 'comments', 'comment-1'))).exists(), true);
   });
 
   it('denies deleting another member post', async () => {
@@ -242,7 +282,7 @@ describe('Post creation and deletion', () => {
     await assertFails(deleteDoc(doc(bob, 'posts', 'post-1')));
   });
 
-  it('allows the post owner to list and remove nested likes and comments', async () => {
+  it('does not allow a post owner to remove another member interactions while the post exists', async () => {
     const alice = env.authenticatedContext('alice').firestore();
     await register(alice, 'alice', 'alice');
     await createPost(alice, 'alice', 'post-1');
@@ -261,8 +301,60 @@ describe('Post creation and deletion', () => {
     const comments = await getDocs(collection(alice, 'posts', 'post-1', 'comments'));
     assert.equal(likes.size, 1);
     assert.equal(comments.size, 1);
+    await assertFails(deleteDoc(doc(alice, 'posts', 'post-1', 'likes', 'bob')));
+    await assertFails(deleteDoc(doc(alice, 'posts', 'post-1', 'comments', 'comment-1')));
+    assert.equal((await getDoc(doc(alice, 'posts', 'post-1'))).data().likeCount, 0);
+    assert.equal((await getDoc(doc(alice, 'posts', 'post-1'))).data().commentCount, 0);
+    assert.equal((await getDoc(doc(alice, 'posts', 'post-1', 'likes', 'bob'))).exists(), true);
+    assert.equal((await getDoc(doc(alice, 'posts', 'post-1', 'comments', 'comment-1'))).exists(), true);
+
+    const deleteBatch = writeBatch(alice);
+    deleteBatch.delete(doc(alice, 'posts', 'post-1'));
+    deleteBatch.update(doc(alice, 'users', 'alice'), {
+      postCount: 0,
+      counterMutation: { kind: 'post', id: 'post-1' }
+    });
+    deleteBatch.set(doc(alice, 'postDeletionCleanup', 'post-1'), {
+      authorId: 'alice',
+      imagePath: 'images/posts/alice/post-1.jpg'
+    });
+    await assertSucceeds(deleteBatch.commit());
     await assertSucceeds(deleteDoc(doc(alice, 'posts', 'post-1', 'likes', 'bob')));
     await assertSucceeds(deleteDoc(doc(alice, 'posts', 'post-1', 'comments', 'comment-1')));
+    await assertSucceeds(deleteDoc(doc(alice, 'postDeletionCleanup', 'post-1')));
+  });
+
+  it('does not allow a stranger to remove interactions through a cleanup marker', async () => {
+    const alice = env.authenticatedContext('alice').firestore();
+    await register(alice, 'alice', 'alice');
+    await createPost(alice, 'alice', 'post-1');
+    await env.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, 'posts', 'post-1', 'likes', 'bob'), { createdAt: serverTimestamp() });
+      await setDoc(doc(db, 'posts', 'post-1', 'comments', 'comment-1'), {
+        authorId: 'bob',
+        authorUsername: 'bob',
+        text: 'Nice',
+        createdAt: serverTimestamp()
+      });
+    });
+
+    const deleteBatch = writeBatch(alice);
+    deleteBatch.delete(doc(alice, 'posts', 'post-1'));
+    deleteBatch.update(doc(alice, 'users', 'alice'), {
+      postCount: 0,
+      counterMutation: { kind: 'post', id: 'post-1' }
+    });
+    deleteBatch.set(doc(alice, 'postDeletionCleanup', 'post-1'), {
+      authorId: 'alice',
+      imagePath: 'images/posts/alice/post-1.jpg'
+    });
+    await assertSucceeds(deleteBatch.commit());
+
+    const charlie = env.authenticatedContext('charlie').firestore();
+    await assertFails(getDoc(doc(charlie, 'postDeletionCleanup', 'post-1')));
+    await assertFails(deleteDoc(doc(charlie, 'posts', 'post-1', 'likes', 'bob')));
+    await assertFails(deleteDoc(doc(charlie, 'posts', 'post-1', 'comments', 'comment-1')));
   });
 
   it('allows signed-in members to list likes but not delete another member like', async () => {

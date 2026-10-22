@@ -5,6 +5,7 @@ service cloud.firestore {
     function owner(uid) { return signedIn() && request.auth.uid == uid; }
     function userPath(uid) { return /databases/$(database)/documents/users/$(uid); }
     function postPath(id) { return /databases/$(database)/documents/posts/$(id); }
+    function postCleanupPath(id) { return /databases/$(database)/documents/postDeletionCleanup/$(id); }
     function validUsername(s) { return s is string && s.matches('^[a-z0-9_.]{3,30}$'); }
     function text(s, max) { return s is string && s.size() <= max; }
     function nonblank(s, max) { return text(s, max) && s.matches('[\\s\\S]*[^\\s][\\s\\S]*'); }
@@ -101,6 +102,16 @@ service cloud.firestore {
       return mutation(u.counterMutation,'post') && u.counterMutation.id == id
         && u.postCount == get(userPath(uid)).data.postCount + delta;
     }
+    function postCleanupWitness(id,uid) {
+      let marker = postCleanupPath(id);
+      return existsAfter(marker)
+        && getAfter(marker).data.authorId == uid
+        && getAfter(marker).data.imagePath == resource.data.imagePath;
+    }
+    function canCleanDeletedPost(id) {
+      return exists(postCleanupPath(id))
+        && owner(get(postCleanupPath(id)).data.authorId);
+    }
     function likeCounter(id) {
       let p = /databases/$(database)/documents/posts/$(id)/likes/$(request.auth.uid);
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likeCount'])
@@ -135,17 +146,26 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['authorAvatarUrl'])
           && request.resource.data.authorAvatarUrl == get(userPath(request.auth.uid)).data.avatarUrl)
         || likeCounter(id) || commentCounter(id));
-      allow delete: if owner(resource.data.authorId) && postUserWitness(id,request.auth.uid,-1);
+      allow delete: if owner(resource.data.authorId)
+        && postUserWitness(id,request.auth.uid,-1)
+        && postCleanupWitness(id,request.auth.uid);
       match /likes/{uid} {
         allow read: if signedIn();
         allow create: if owner(uid) && exists(postPath(id))
           && request.resource.data.keys().hasOnly(['createdAt']) && request.resource.data.keys().hasAll(['createdAt'])
           && request.resource.data.createdAt == request.time
           && getAfter(postPath(id)).data.likeCount == get(postPath(id)).data.likeCount + 1;
-        allow delete: if (owner(uid) && (!existsAfter(postPath(id))
-          || getAfter(postPath(id)).data.likeCount == get(postPath(id)).data.likeCount - 1
-          || !exists(postPath(id))))
-          || (exists(postPath(id)) && owner(get(postPath(id)).data.authorId));
+        allow delete: if (
+          owner(uid)
+          && (
+            !exists(postPath(id))
+            || (
+              existsAfter(postPath(id))
+              && getAfter(postPath(id)).data.likeCount
+                == get(postPath(id)).data.likeCount - 1
+            )
+          )
+        ) || canCleanDeletedPost(id);
       }
       match /comments/{cid} {
         allow read: if signedIn();
@@ -156,10 +176,29 @@ service cloud.firestore {
           && request.resource.data.authorUsername == get(userPath(request.auth.uid)).data.username
           && nonblank(request.resource.data.text,500) && request.resource.data.createdAt == request.time
           && commentWitness(id,cid,1);
-        allow delete: if (owner(resource.data.authorId) && (
-          commentWitness(id,cid,-1) || !exists(postPath(id)))
-          ) || (exists(postPath(id)) && owner(get(postPath(id)).data.authorId));
+        allow delete: if (
+          owner(resource.data.authorId)
+          && (
+            !exists(postPath(id))
+            || commentWitness(id,cid,-1)
+          )
+        ) || canCleanDeletedPost(id);
       }
+    }
+    match /postDeletionCleanup/{postId} {
+      allow get: if !exists(postCleanupPath(postId)) || owner(resource.data.authorId);
+      allow list: if owner(resource.data.authorId);
+      allow create: if signedIn()
+        && request.resource.data.keys().hasAll(['authorId','imagePath'])
+        && request.resource.data.keys().hasOnly(['authorId','imagePath'])
+        && owner(request.resource.data.authorId)
+        && exists(postPath(postId))
+        && get(postPath(postId)).data.authorId == request.auth.uid
+        && request.resource.data.imagePath == get(postPath(postId)).data.imagePath
+        && !existsAfter(postPath(postId))
+        && postUserWitness(postId,request.auth.uid,-1);
+      allow delete: if owner(resource.data.authorId)
+        && !exists(postPath(postId));
     }
     function commentWitness(id,cid,delta) {
       let d = getAfter(postPath(id)).data;
