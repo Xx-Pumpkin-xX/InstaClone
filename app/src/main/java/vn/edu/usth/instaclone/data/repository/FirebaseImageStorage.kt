@@ -2,6 +2,7 @@ package vn.edu.usth.instaclone.data.repository
 
 import com.google.firebase.Firebase
 import com.google.firebase.storage.storage
+import com.google.firebase.storage.storageMetadata
 import kotlinx.coroutines.tasks.await
 
 class FirebaseImageStorage : ImageStorage {
@@ -9,7 +10,7 @@ class FirebaseImageStorage : ImageStorage {
 
     override suspend fun upload(path: String, bytes: ByteArray): String {
         val ref = storageRef.child(path)
-        ref.putBytes(bytes).await()
+        ref.putBytes(bytes, storageMetadata { contentType = "image/jpeg" }).await()
         return ref.downloadUrl.await().toString()
     }
 
