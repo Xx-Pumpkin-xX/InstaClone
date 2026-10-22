@@ -109,7 +109,8 @@ service cloud.firestore {
         && getAfter(marker).data.imagePath == resource.data.imagePath;
     }
     function canCleanDeletedPost(id) {
-      return exists(postCleanupPath(id))
+      return !exists(postPath(id)) && !existsAfter(postPath(id))
+        && exists(postCleanupPath(id))
         && owner(get(postCleanupPath(id)).data.authorId);
     }
     function likeCounter(id) {
@@ -131,6 +132,7 @@ service cloud.firestore {
     match /posts/{id} {
       allow read: if signedIn();
       allow create: if signedIn() && validPost(request.resource.data) && owner(request.resource.data.authorId)
+        && !exists(postCleanupPath(id)) && !existsAfter(postCleanupPath(id))
         && !request.resource.data.keys().hasAny(['commentMutation'])
         && request.resource.data.authorUsername == get(userPath(request.auth.uid)).data.username
         && request.resource.data.authorAvatarUrl == get(userPath(request.auth.uid)).data.avatarUrl

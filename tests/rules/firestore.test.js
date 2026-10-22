@@ -714,3 +714,71 @@ describe('Follow and counters', () => {
     );
   });
 });
+describe('Cleanup marker reuse regression', () => {
+  const id = 'reuse-test';
+  async function deletedPostWithMarker() {
+    const alice = env.authenticatedContext('alice').firestore();
+    const bob = env.authenticatedContext('bob').firestore();
+    await register(alice, 'alice', 'alice');
+    await register(bob, 'bob', 'bob');
+    await createPost(alice, 'alice', id);
+    const batch = writeBatch(alice);
+    batch.delete(doc(alice, 'posts', id));
+    batch.update(doc(alice, 'users', 'alice'), {
+      postCount: 0, counterMutation: { kind: 'post', id }
+    });
+    batch.set(doc(alice, 'postDeletionCleanup', id), {
+      authorId: 'alice', imagePath: `images/posts/alice/${id}.jpg`
+    });
+    await batch.commit();
+    return { alice, bob };
+  }
+
+  it('blocks reusing a post ID while its cleanup marker remains, for any author', async () => {
+    const { alice, bob } = await deletedPostWithMarker();
+    await assertFails(createPost(alice, 'alice', id));
+    await assertFails(createPost(bob, 'bob', id));
+    assert.equal((await getDoc(doc(bob, 'users', 'bob'))).data().postCount, 0);
+    assert.equal((await getDoc(doc(bob, 'posts', id))).exists(), false);
+  });
+
+  it('blocks deleting the marker and recreating the post in the same batch', async () => {
+    const { alice } = await deletedPostWithMarker();
+    const batch = writeBatch(alice);
+    batch.delete(doc(alice, 'postDeletionCleanup', id));
+    batch.set(doc(alice, 'posts', id), newPost('alice', id));
+    batch.update(doc(alice, 'users', 'alice'), {
+      postCount: 1, counterMutation: { kind: 'post', id }
+    });
+    await assertFails(batch.commit());
+    assert.equal((await getDoc(doc(alice, 'postDeletionCleanup', id))).exists(), true);
+  });
+
+  it('stale marker cannot authorize deleting interactions on an existing post', async () => {
+    const { alice, bob } = await deletedPostWithMarker();
+    // Simulate legacy data created before the post-ID reuse restriction.
+    await env.withSecurityRulesDisabled(async context => {
+      const db = context.firestore();
+      await setDoc(doc(db, 'posts', id), {
+        ...newPost('bob', id), likeCount: 1, commentCount: 1
+      });
+      await setDoc(doc(db, 'posts', id, 'likes', 'bob'), { createdAt: serverTimestamp() });
+      await setDoc(doc(db, 'posts', id, 'comments', 'c'), {
+        authorId: 'bob', authorUsername: 'bob', text: 'hi', createdAt: serverTimestamp()
+      });
+    });
+    await assertFails(deleteDoc(doc(alice, 'posts', id, 'likes', 'bob')));
+    await assertFails(deleteDoc(doc(alice, 'posts', id, 'comments', 'c')));
+    const post = (await getDoc(doc(bob, 'posts', id))).data();
+    assert.equal(post.likeCount, 1);
+    assert.equal(post.commentCount, 1);
+    assert.equal((await getDoc(doc(bob, 'posts', id, 'likes', 'bob'))).exists(), true);
+    assert.equal((await getDoc(doc(bob, 'posts', id, 'comments', 'c'))).exists(), true);
+  });
+
+  it('allows post creation after cleanup marker removal has committed', async () => {
+    const { alice, bob } = await deletedPostWithMarker();
+    await assertSucceeds(deleteDoc(doc(alice, 'postDeletionCleanup', id)));
+    await assertSucceeds(createPost(bob, 'bob', id));
+  });
+});
