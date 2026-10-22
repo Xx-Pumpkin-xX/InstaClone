@@ -30,12 +30,16 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -82,6 +86,7 @@ fun ProfileScreen(
     val context = LocalContext.current
     val isOnline by remember { observeOnline(context) }.collectAsState(initial = true)
     val lifecycleOwner = LocalLifecycleOwner.current
+    val snackbarHostState = remember { SnackbarHostState() }
 
     DisposableEffect(lifecycleOwner, viewModel) {
         val observer = LifecycleEventObserver { _, event ->
@@ -89,6 +94,13 @@ fun ProfileScreen(
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(state.followError) {
+        state.followError?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.clearFollowError()
+        }
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -149,8 +161,11 @@ fun ProfileScreen(
                     ProfileContent(
                         user = user,
                         posts = state.posts,
+                        followerCount = state.followerCount,
                         isOwnProfile = state.isOwnProfile,
                         isFollowing = state.isFollowing,
+                        isFollowPending = state.isFollowPending,
+                        onFollowClick = viewModel::toggleFollow,
                         onEditProfile = onEditProfile,
                         onLogOut = onLogOut,
                         onPostClick = onPostClick,
@@ -158,6 +173,11 @@ fun ProfileScreen(
                     )
                 }
             }
+
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
         }
     }
 }
@@ -166,8 +186,11 @@ fun ProfileScreen(
 private fun ProfileContent(
     user: User,
     posts: List<Post>,
+    followerCount: Long,
     isOwnProfile: Boolean,
     isFollowing: Boolean,
+    isFollowPending: Boolean,
+    onFollowClick: () -> Unit,
     onEditProfile: () -> Unit,
     onLogOut: () -> Unit,
     onPostClick: (String) -> Unit,
@@ -183,8 +206,11 @@ private fun ProfileContent(
         item(span = { GridItemSpan(maxLineSpan) }) {
             ProfileHeader(
                 user = user,
+                followerCount = followerCount,
                 isOwnProfile = isOwnProfile,
                 isFollowing = isFollowing,
+                isFollowPending = isFollowPending,
+                onFollowClick = onFollowClick,
                 onEditProfile = onEditProfile,
                 onLogOut = onLogOut,
                 onMessage = onMessage,
@@ -211,8 +237,11 @@ private fun ProfileContent(
 @Composable
 private fun ProfileHeader(
     user: User,
+    followerCount: Long,
     isOwnProfile: Boolean,
     isFollowing: Boolean,
+    isFollowPending: Boolean,
+    onFollowClick: () -> Unit,
     onEditProfile: () -> Unit,
     onLogOut: () -> Unit,
     onMessage: () -> Unit,
@@ -238,7 +267,7 @@ private fun ProfileHeader(
                 horizontalArrangement = Arrangement.SpaceEvenly,
             ) {
                 Stat(value = user.postCount, label = stringResource(R.string.profile_posts))
-                Stat(value = user.followerCount, label = stringResource(R.string.profile_followers))
+                Stat(value = followerCount, label = stringResource(R.string.profile_followers))
                 Stat(value = user.followingCount, label = stringResource(R.string.profile_following))
             }
         }
@@ -295,19 +324,31 @@ private fun ProfileHeader(
                 }
             } else {
                 Button(
-                    // TODO(FR-16): toggle follow/unfollow and update counts.
-                    onClick = { },
+                    onClick = onFollowClick,
+                    enabled = !isFollowPending,
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text(
-                        stringResource(
-                            if (isFollowing) {
-                                R.string.profile_following_button
-                            } else {
-                                R.string.profile_follow
-                            }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        if (isFollowPending) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = LocalContentColor.current,
+                            )
+                        }
+                        Text(
+                            stringResource(
+                                if (isFollowing) {
+                                    R.string.profile_following_button
+                                } else {
+                                    R.string.profile_follow
+                                }
+                            )
                         )
-                    )
+                    }
                 }
                 OutlinedButton(onClick = onMessage, modifier = Modifier.weight(1f)) {
                     Text(stringResource(R.string.profile_message))
