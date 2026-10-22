@@ -1,6 +1,8 @@
 package vn.edu.usth.instaclone.ui.post
 
 import android.widget.Toast
+import androidx.compose.foundation.ExperimentalFoundationApi          // MỚI
+import androidx.compose.foundation.combinedClickable                  // MỚI
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,6 +18,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.AlertDialog                         // MỚI
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -23,6 +26,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton                         // MỚI
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -46,6 +50,7 @@ import coil.compose.AsyncImage
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
+import vn.edu.usth.instaclone.data.AppContainer                       // MỚI
 import vn.edu.usth.instaclone.data.model.Comment
 import vn.edu.usth.instaclone.data.model.Post
 
@@ -60,6 +65,8 @@ fun PostDetailScreen(
     val comments by viewModel.comments.collectAsState()
     val hasMore by viewModel.hasMore.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
+    // MỚI: id người đang đăng nhập, để biết bình luận nào là của mình
+    val currentUserId by AppContainer.authRepository.currentUserId.collectAsState()
     val context = LocalContext.current
 
     // Load the post when the screen opens
@@ -78,25 +85,32 @@ fun PostDetailScreen(
         comments = comments,
         hasMore = hasMore,
         onLoadMore = { viewModel.loadMoreComments() },
+        currentUserId = currentUserId,                              // MỚI
+        onDeleteComment = { id -> viewModel.deleteComment(id) },    // MỚI
         onSend = { text, onResult -> viewModel.sendComment(text, onResult) },
         onBack = onBack,
     )
 }
 
 // SCREEN 2: UI only (the Preview uses this one)
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)   // SỬA: thêm Foundation
 @Composable
 fun PostDetailContent(
     post: Post?,
     comments: List<Comment>,
     hasMore: Boolean = false,
     onLoadMore: () -> Unit = {},
+    currentUserId: String? = null,            // MỚI
+    onDeleteComment: (String) -> Unit = {},   // MỚI
     onSend: (String, (Boolean) -> Unit) -> Unit,
     onBack: () -> Unit = {},
 ) {
     var text by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+
+    // MỚI: bình luận đang chờ xác nhận xóa (null = không có)
+    var commentToDelete by remember { mutableStateOf<Comment?>(null) }
 
     // Always use the latest values inside LaunchedEffect
     val currentHasMore by rememberUpdatedState(hasMore)
@@ -163,7 +177,15 @@ fun PostDetailContent(
                 // Part 2: each comment
                 items(comments, key = { it.id }) { comment ->
                     Column(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                        modifier = Modifier
+                            .combinedClickable(                       // MỚI: nhấn giữ bình luận
+                                onClick = {},
+                                onLongClick = {
+                                    // chỉ bình luận của mình mới hiện hộp xóa
+                                    if (comment.authorId == currentUserId) commentToDelete = comment
+                                },
+                            )
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
                     ) {
                         Text(comment.authorUsername, fontWeight = FontWeight.Bold)
                         Text(comment.text)
@@ -205,6 +227,24 @@ fun PostDetailContent(
                 }
             }
         }
+    }
+
+    // MỚI: hộp xác nhận xóa bình luận
+    commentToDelete?.let { c ->
+        AlertDialog(
+            onDismissRequest = { commentToDelete = null },
+            title = { Text("Delete comment?") },
+            text = { Text("This action cannot be undone.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    onDeleteComment(c.id)
+                    commentToDelete = null
+                }) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { commentToDelete = null }) { Text("Cancel") }
+            },
+        )
     }
 }
 
