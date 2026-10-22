@@ -270,10 +270,12 @@ async function follow(db, me, target) {
     transaction.set(followingRef, { createdAt: serverTimestamp() });
     transaction.set(followerRef, { createdAt: serverTimestamp() });
     transaction.update(meRef, {
-      followingCount: meSnapshot.data().followingCount + 1
+      followingCount: meSnapshot.data().followingCount + 1,
+      counterMutation: { kind: 'follow', id: target }
     });
     transaction.update(targetRef, {
-      followerCount: targetSnapshot.data().followerCount + 1
+      followerCount: targetSnapshot.data().followerCount + 1,
+      counterMutation: { kind: 'follow', id: me }
     });
   });
 }
@@ -294,11 +296,13 @@ async function unfollow(db, me, target) {
     transaction.delete(followingRef);
     transaction.delete(followerRef);
     transaction.update(meRef, {
-      followingCount: meSnapshot.data().followingCount - 1
+      followingCount: meSnapshot.data().followingCount - 1,
+      counterMutation: { kind: 'follow', id: target }
     });
     if (targetSnapshot.exists()) {
       transaction.update(targetRef, {
-        followerCount: targetSnapshot.data().followerCount - 1
+        followerCount: targetSnapshot.data().followerCount - 1,
+        counterMutation: { kind: 'follow', id: me }
       });
     }
   });
@@ -449,12 +453,12 @@ describe('Follow and counters', () => {
     );
   });
 
-  it('keeps another member following collection private', async () => {
+  it('allows signed-in members to read another member following collection', async () => {
     await seedProfiles('alice', 'bob');
     await follow(env.authenticatedContext('alice').firestore(), 'alice', 'bob');
     const bob = env.authenticatedContext('bob').firestore();
 
-    await assertFails(
+    await assertSucceeds(
       getDoc(doc(bob, 'users', 'alice', 'following', 'bob'))
     );
   });
