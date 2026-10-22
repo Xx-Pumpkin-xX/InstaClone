@@ -21,4 +21,6 @@ object AppContainer {
     val followRepository: FollowRepository by lazy { FakeFollowRepository() }
     val imageStorage: ImageStorage by lazy { FakeImageStorage() }
     val profileImageStorage: ImageStorage by lazy { FakeImageStorage() }
+    val commentRepository: CommentRepository by lazy { FakeCommentRepository(fakePostRepository) }
+    val likeRepository: LikeRepository by lazy { FakeLikeRepository() }
 }

@@ -157,7 +157,8 @@ describe('Users and usernames', () => {
     const bob = env.authenticatedContext('bob').firestore();
 
     await assertFails(register(bob, 'bob', 'alice'));
-  });
+    });
+  }
 });
 
 describe('Post author avatar updates', () => {
@@ -204,4 +205,18 @@ describe('Post author avatar updates', () => {
       })
     );
   });
+});
+describe('FRS registration username policy', () => {
+  for (const username of ['phong.demo', 'phong_demo', 'a'.repeat(30)]) {
+    it(`allows ${username} in an atomic profile and claim write`, async () => {
+      const db = env.authenticatedContext('alice').firestore();
+      await assertSucceeds(register(db, 'alice', username));
+    });
+  }
+  for (const username of ['ab', 'a'.repeat(31), 'PhongDemo', 'a b']) {
+    it(`rejects invalid username ${username}`, async () => {
+      const db = env.authenticatedContext('alice').firestore();
+      await assertFails(register(db, 'alice', username));
+    });
+  }
 });
