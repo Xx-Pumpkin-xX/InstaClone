@@ -126,10 +126,10 @@ fun ProfileScreen(
         if (!isOnline) {
             Text(
                 text = stringResource(R.string.profile_offline_banner),
-                color = Color.White,
+                color = MaterialTheme.colorScheme.inverseOnSurface,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color.DarkGray)
+                    .background(MaterialTheme.colorScheme.inverseSurface)
                     .padding(8.dp),
             )
         }
@@ -254,12 +254,12 @@ private fun ProfileHeader(
                 model = user.avatarUrl,
                 contentDescription = stringResource(R.string.profile_avatar, user.username),
                 contentScale = ContentScale.Crop,
-                placeholder = ColorPainter(Color.LightGray),
-                error = ColorPainter(Color.LightGray),
+                placeholder = ColorPainter(MaterialTheme.colorScheme.surfaceVariant),
+                error = ColorPainter(MaterialTheme.colorScheme.surfaceVariant),
                 modifier = Modifier
                     .size(96.dp)
                     .clip(CircleShape)
-                    .background(Color.LightGray),
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
             )
             Spacer(modifier = Modifier.width(20.dp))
             Row(
@@ -385,9 +385,9 @@ private fun PostTile(post: Post, onClick: () -> Unit) {
             model = post.imageUrl,
             contentDescription = stringResource(R.string.profile_post_by, post.authorUsername),
             contentScale = ContentScale.Crop,
-            placeholder = ColorPainter(Color.LightGray),
-            error = ColorPainter(Color.LightGray),
-            modifier = Modifier.fillMaxSize().background(Color.LightGray),
+            placeholder = ColorPainter(MaterialTheme.colorScheme.surfaceVariant),
+            error = ColorPainter(MaterialTheme.colorScheme.surfaceVariant),
+            modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant),
         )
     }
 }

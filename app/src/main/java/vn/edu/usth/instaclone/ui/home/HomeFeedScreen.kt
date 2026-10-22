@@ -107,10 +107,10 @@ fun HomeFeedScreen(
             if (!isOnline) {
                 Text(
                     text = stringResource(R.string.home_no_internet),
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.inverseOnSurface,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color.DarkGray)
+                        .background(MaterialTheme.colorScheme.inverseSurface)
                         .padding(8.dp)
                 )
             }
@@ -219,7 +219,7 @@ fun PostItem(
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
-                            .background(Color.LightGray)
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
                     )
                 }
                 Spacer(modifier = Modifier.width(10.dp))
@@ -269,7 +269,7 @@ fun PostItem(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f)
-                .background(Color.LightGray)
+                .background(MaterialTheme.colorScheme.surfaceVariant)
                 .clickable { onClick() }
         ) {
             if (post.imageUrl.isNotBlank()) {
@@ -291,7 +291,7 @@ fun PostItem(
                 Icon(
                     imageVector = if (isLiked) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
                     contentDescription = stringResource(R.string.home_like),
-                    tint = if (isLiked) Color.Red else Color.Unspecified
+                    tint = if (isLiked) MaterialTheme.colorScheme.error else Color.Unspecified
                 )
             }
             Text(text = "${post.likeCount}")
