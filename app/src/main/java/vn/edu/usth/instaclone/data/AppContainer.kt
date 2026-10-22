@@ -7,6 +7,8 @@ import vn.edu.usth.instaclone.data.repository.FakeCommentRepository
 import vn.edu.usth.instaclone.data.repository.FakeImageStorage
 import vn.edu.usth.instaclone.data.repository.FakePostRepository
 import vn.edu.usth.instaclone.data.repository.FakeLikeRepository
+import vn.edu.usth.instaclone.data.repository.FirebaseImageStorage
+import vn.edu.usth.instaclone.data.repository.FirebasePostRepository
 import vn.edu.usth.instaclone.data.repository.FollowRepository
 import vn.edu.usth.instaclone.data.repository.ImageStorage
 import vn.edu.usth.instaclone.data.repository.PostRepository
@@ -16,16 +18,17 @@ import vn.edu.usth.instaclone.data.repository.fake.FakeChatRepository
 import vn.edu.usth.instaclone.data.repository.fake.FakeFollowRepository
 import vn.edu.usth.instaclone.data.repository.fake.FakeUserRepository
 import vn.edu.usth.instaclone.data.repository.firebase.FirebaseAuthRepository
+import vn.edu.usth.instaclone.data.repository.firebase.FirebaseUserRepository
 
 object AppContainer {
     private val fakePostRepository by lazy { FakePostRepository() }
     val authRepository: AuthRepository by lazy { FirebaseAuthRepository() }
     val chatRepository: ChatRepository by lazy { FakeChatRepository() }
-    val postRepository: PostRepository get() = fakePostRepository
-    val userRepository: UserRepository by lazy { FakeUserRepository() }
+    val postRepository: PostRepository by lazy { FirebasePostRepository() }
+    val userRepository: UserRepository by lazy { FirebaseUserRepository() }
     val followRepository: FollowRepository by lazy { FakeFollowRepository() }
-    val imageStorage: ImageStorage by lazy { FakeImageStorage() }
-    val profileImageStorage: ImageStorage by lazy { FakeImageStorage() }
+    val imageStorage: ImageStorage by lazy { FirebaseImageStorage() }
+    val profileImageStorage: ImageStorage by lazy { FirebaseImageStorage() }
     val commentRepository: CommentRepository by lazy { FakeCommentRepository(fakePostRepository) }
     val likeRepository: LikeRepository by lazy { FakeLikeRepository(fakePostRepository) }
 }
