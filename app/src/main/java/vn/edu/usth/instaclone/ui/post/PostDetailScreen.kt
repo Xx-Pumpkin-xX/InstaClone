@@ -1,11 +1,10 @@
 package vn.edu.usth.instaclone.ui.post
 
 import android.widget.Toast
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
@@ -30,25 +30,24 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.launch
 import vn.edu.usth.instaclone.data.model.Comment
 import vn.edu.usth.instaclone.data.model.Post
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.runtime.rememberCoroutineScope      // MỚI
-import androidx.compose.runtime.rememberUpdatedState        // MỚI
-import androidx.compose.runtime.snapshotFlow                // MỚI
-import kotlinx.coroutines.flow.distinctUntilChanged         // MỚI
-import kotlinx.coroutines.flow.filter                       // MỚI
-import kotlinx.coroutines.launch                            // MỚI
 
 // SCREEN 1: connected to the ViewModel, loads data and handles errors
 @Composable
@@ -79,7 +78,7 @@ fun PostDetailScreen(
         comments = comments,
         hasMore = hasMore,
         onLoadMore = { viewModel.loadMoreComments() },
-        onSend = { text -> viewModel.sendComment(text) },
+        onSend = { text, onResult -> viewModel.sendComment(text, onResult) },
         onBack = onBack,
     )
 }
@@ -92,32 +91,30 @@ fun PostDetailContent(
     comments: List<Comment>,
     hasMore: Boolean = false,
     onLoadMore: () -> Unit = {},
-    onSend: (String) -> Unit,
+    onSend: (String, (Boolean) -> Unit) -> Unit,
     onBack: () -> Unit = {},
 ) {
     var text by remember { mutableStateOf("") }
-
-    // Nhớ vị trí cuộn của danh sách
     val listState = rememberLazyListState()
-
-    // MỚI: để chạy lệnh cuộn lên đầu sau khi gửi bình luận
     val scope = rememberCoroutineScope()
 
-    // MỚI: luôn dùng giá trị mới nhất của hasMore và onLoadMore bên trong LaunchedEffect
+    // Always use the latest values inside LaunchedEffect
     val currentHasMore by rememberUpdatedState(hasMore)
     val currentOnLoadMore by rememberUpdatedState(onLoadMore)
 
-    // MỚI: chỉ tải thêm khi người dùng vừa cuộn tới gần cuối
+    // Load more only when the user has just scrolled near the end
     LaunchedEffect(listState) {
         snapshotFlow {
             val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-            // canScrollBackward = đã cuộn xuống ít nhất một chút (không phải mới mở bài)
             listState.canScrollBackward && last >= listState.layoutInfo.totalItemsCount - 2
         }
-            .distinctUntilChanged()   // chỉ phản ứng khi giá trị đổi (false -> true)
-            .filter { it }            // chỉ quan tâm lúc nó thành true
+            .distinctUntilChanged()
+            .filter { it }
             .collect { if (currentHasMore) currentOnLoadMore() }
     }
+
+    val trimmedLength = text.trim().length
+    val isValid = trimmedLength in 1..PostDetailViewModel.MAX_COMMENT_LENGTH
 
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -149,11 +146,13 @@ fun PostDetailContent(
                         Column(modifier = Modifier.padding(12.dp)) {
                             Text(post.authorUsername, fontWeight = FontWeight.Bold)
                             Spacer(Modifier.height(8.dp))
-                            Box(
-                                Modifier
+                            AsyncImage(
+                                model = post.imageUrl,
+                                contentDescription = post.caption,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
                                     .fillMaxWidth()
                                     .aspectRatio(1f)
-                                    .background(Color.LightGray)
                             )
                             Spacer(Modifier.height(8.dp))
                             Text(post.caption)
@@ -184,16 +183,23 @@ fun PostDetailContent(
                     onValueChange = { text = it },
                     modifier = Modifier.weight(1f),
                     placeholder = { Text("Add a comment...") },
+                    isError = trimmedLength > PostDetailViewModel.MAX_COMMENT_LENGTH,
+                    supportingText = {
+                        Text("$trimmedLength/${PostDetailViewModel.MAX_COMMENT_LENGTH}")
+                    },
                     singleLine = true,
                 )
                 Spacer(Modifier.width(8.dp))
                 Button(
                     onClick = {
-                        onSend(text)
-                        text = ""
-                        scope.launch { listState.animateScrollToItem(0) }   // MỚI: cuộn về đầu
+                        onSend(text) { ok ->
+                            if (ok) {
+                                text = ""
+                                scope.launch { listState.animateScrollToItem(0) }
+                            }
+                        }
                     },
-                    enabled = text.isNotBlank(),
+                    enabled = isValid,
                 ) {
                     Text("Send")
                 }
@@ -211,6 +217,6 @@ private fun PostDetailPreview() {
             Comment(id = "c1", authorUsername = "an", text = "Yo"),
             Comment(id = "c2", authorUsername = "binh", text = "SUGOIII"),
         ),
-        onSend = {},
+        onSend = { _, _ -> },
     )
 }

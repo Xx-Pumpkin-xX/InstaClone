@@ -30,5 +30,5 @@ object AppContainer {
     val imageStorage: ImageStorage by lazy { FirebaseImageStorage() }
     val profileImageStorage: ImageStorage by lazy { FirebaseImageStorage() }
     val commentRepository: CommentRepository by lazy { FakeCommentRepository(fakePostRepository) }
-    val likeRepository: LikeRepository by lazy { FakeLikeRepository() }
+    val likeRepository: LikeRepository by lazy { FakeLikeRepository(fakePostRepository) }
 }

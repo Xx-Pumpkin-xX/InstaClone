@@ -5,13 +5,11 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import vn.edu.usth.instaclone.data.AppContainer
 import vn.edu.usth.instaclone.data.model.Comment
 import vn.edu.usth.instaclone.data.model.Post
 import vn.edu.usth.instaclone.data.repository.CommentRepository
-import vn.edu.usth.instaclone.data.repository.FakeCommentRepository
-import vn.edu.usth.instaclone.data.repository.FakePostRepository
 import vn.edu.usth.instaclone.data.repository.PostRepository
-import vn.edu.usth.instaclone.data.AppContainer
 
 
 class PostDetailViewModel(
@@ -55,13 +53,16 @@ class PostDetailViewModel(
 
     // Màn hình gọi hàm này khi mở, truyền id bài cần xem
     fun load(id: String) {
-        if (id == postId) return        // đã tải bài này rồi thì bỏ qua
-        postId = id
+        if (id == postId) return        // đã tải THÀNH CÔNG bài này rồi thì bỏ qua
         viewModelScope.launch {
             try {
-                _post.value = postRepo.getPost(id)
-                allComments = commentRepo.comments(id)   // SỬA: lưu vào kho trước
-                shown = PAGE_SIZE                        // MỚI: bắt đầu lại từ 5
+                val loadedPost = postRepo.getPost(id)
+                val loadedComments = commentRepo.comments(id)
+                // Cả hai đều thành công mới cập nhật
+                postId = id
+                _post.value = loadedPost
+                allComments = loadedComments
+                shown = PAGE_SIZE
                 publish()
             } catch (e: Exception) {
                 _errorMessage.value = "Không tải được bài viết"
@@ -69,18 +70,24 @@ class PostDetailViewModel(
         }
     }
 
-    // Gửi bình luận rồi tải lại danh sách
-    fun sendComment(text: String) {
+    // Gửi bình luận; báo kết quả qua onResult (true = thành công, false = thất bại)
+    // Gửi bình luận; báo kết quả qua onResult (true = thành công, false = thất bại)
+    fun sendComment(text: String, onResult: (Boolean) -> Unit = {}) {
         val content = text.trim()
-        if (content.isEmpty() || postId.isEmpty()) return
+        if (content.isEmpty() || content.length > MAX_COMMENT_LENGTH || postId.isEmpty()) {
+            onResult(false)
+            return
+        }
         viewModelScope.launch {
             try {
                 commentRepo.addComment(postId, content)
-                allComments = commentRepo.comments(postId)   // SỬA: lưu vào kho
-                shown += 1                                   // MỚI: tăng 1 để không có bình luận cũ nào bị "đẩy mất"
+                allComments = commentRepo.comments(postId)
+                shown += 1
                 publish()
+                onResult(true)
             } catch (e: Exception) {
                 _errorMessage.value = "Không gửi được bình luận"
+                onResult(false)
             }
         }
     }
@@ -92,5 +99,6 @@ class PostDetailViewModel(
     // MỚI: hằng số, mỗi lần hiện 5 bình luận
     companion object {
         private const val PAGE_SIZE = 5
+        const val MAX_COMMENT_LENGTH = 500
     }
 }

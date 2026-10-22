@@ -117,7 +117,7 @@ fun HomeFeedScreen(
 
             PullToRefreshBox(
                 isRefreshing = isRefreshing,
-                onRefresh = { viewModel.refresh() },
+                onRefresh = { viewModel.pullToRefresh() },
                 modifier = Modifier.weight(1f)
             ) {
                 if (posts.isEmpty() && !isRefreshing) {
