@@ -58,6 +58,26 @@ class FakeUserRepository(
         }
     }
 
+    /**
+     * Test/preview support: applies the counter change that a real follow transaction
+     * performs on both profiles.
+     */
+    internal fun applyFollowChange(me: String, target: String, following: Boolean) {
+        seedCurrentUserIfNeeded(me)
+        val delta = if (following) 1 else -1
+        users.update { current ->
+            val meProfile = current[me] ?: return@update current
+            val targetProfile = current[target] ?: return@update current
+            current +
+                (me to meProfile.copy(
+                    followingCount = (meProfile.followingCount + delta).coerceAtLeast(0),
+                )) +
+                (target to targetProfile.copy(
+                    followerCount = (targetProfile.followerCount + delta).coerceAtLeast(0),
+                ))
+        }
+    }
+
     override suspend fun searchByPrefix(prefix: String, limit: Int): List<User> {
         waitForNetwork()
         val query = prefix.trim().lowercase()
