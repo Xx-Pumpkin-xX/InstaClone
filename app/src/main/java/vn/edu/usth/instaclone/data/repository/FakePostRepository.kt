@@ -63,21 +63,20 @@ class FakePostRepository(
                 )
             )
         }
+        // ... (vòng for (i in 2..30) { ... } ở trên)
+
+        // Xáo một lần khi tạo kho, để thứ tự bài ổn định trong suốt phiên chạy
+        posts.shuffle()
+    }   // <- dấu } đóng init nằm ở ĐÂY, trước shuffleFeed
+
+    // Xáo lại thứ tự bài (chỉ gọi khi người dùng chủ động kéo để làm mới)
+    fun shuffleFeed() {
+        posts.shuffle()
     }
 
     override suspend fun feedPage(after: Post?, limit: Int): List<Post> {
         ensureMyPosts()
-        // after == null: tải trang đầu / làm mới -> chờ ngắn
-        // after != null: tải thêm 10 bài tiếp theo -> chờ lâu hơn (1,5 giây)
         delay(if (after == null) 300 else 1500)
-
-        // after == null nghĩa là tải trang đầu (mở app hoặc kéo để làm mới).
-        // Lúc này xáo trộn danh sách để mỗi lần làm mới ra thứ tự bài khác nhau.
-        if (after == null) {
-            posts.shuffle()
-        }
-
-        // after = bài cuối của trang trước. null nghĩa là lấy trang đầu.
         val start = if (after == null) 0 else posts.indexOfFirst { it.id == after.id } + 1
         return posts.drop(start).take(limit)
     }

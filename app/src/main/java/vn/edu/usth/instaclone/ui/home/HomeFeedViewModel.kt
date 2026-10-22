@@ -148,6 +148,12 @@ class HomeFeedViewModel(
             }
         }
     }
+
+    // Người dùng kéo để làm mới: xáo thứ tự rồi tải lại
+    fun pullToRefresh() {
+        (postRepo as? vn.edu.usth.instaclone.data.repository.FakePostRepository)?.shuffleFeed()
+        refresh()
+    }
     companion object {
         private const val PAGE_SIZE = 10
     }
