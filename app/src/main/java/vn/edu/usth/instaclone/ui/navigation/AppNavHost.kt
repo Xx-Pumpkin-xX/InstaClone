@@ -10,7 +10,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import vn.edu.usth.instaclone.ui.common.PlaceholderScreen
 import vn.edu.usth.instaclone.ui.home.HomeFeedScreen
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
@@ -25,6 +24,7 @@ import vn.edu.usth.instaclone.ui.chat.ConversationListScreen
 import vn.edu.usth.instaclone.ui.profile.EditProfileScreen
 import vn.edu.usth.instaclone.ui.profile.ProfileScreen
 import vn.edu.usth.instaclone.ui.post.PostDetailScreen
+import vn.edu.usth.instaclone.ui.search.SearchScreen
 import vn.edu.usth.instaclone.ui.auth.LogoutDialog
 
 @Composable
@@ -86,7 +86,9 @@ fun AppNavHost() {
                     )
             }
             composable(Routes.SEARCH) {
-                PlaceholderScreen("S-08 Search", owner = "Trang . T-26")
+                SearchScreen(
+                    onUserClick = { uid -> navController.navigate(Routes.profile(uid)) },
+                )
             }
             composable(Routes.NEW_POST) {
                 vn.edu.usth.instaclone.ui.post.NewPostScreen(
