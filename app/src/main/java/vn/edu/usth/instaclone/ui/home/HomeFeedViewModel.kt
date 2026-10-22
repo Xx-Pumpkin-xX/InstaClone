@@ -7,13 +7,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import vn.edu.usth.instaclone.data.AppContainer
 import vn.edu.usth.instaclone.data.model.Post
-import vn.edu.usth.instaclone.data.repository.FakePostRepository
-import vn.edu.usth.instaclone.data.repository.PostRepository
 import vn.edu.usth.instaclone.data.repository.LikeRepository
-import vn.edu.usth.instaclone.data.repository.FakeLikeRepository
+import vn.edu.usth.instaclone.data.repository.PostRepository
+
 class HomeFeedViewModel(
     private val postRepo: PostRepository = AppContainer.postRepository,
-    private val likeRepo: LikeRepository = FakeLikeRepository(),
+    private val likeRepo: LikeRepository = AppContainer.likeRepository,
 ) : ViewModel() {
 
     private val _posts = MutableStateFlow<List<Post>>(emptyList())
@@ -25,16 +24,20 @@ class HomeFeedViewModel(
     private val _isLoadingMore = MutableStateFlow(false)
     val isLoadingMore: StateFlow<Boolean> = _isLoadingMore
 
+    // thông báo lỗi (null = không có lỗi)
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage
-
-    private var endReached = false
 
     // bài nào mình đã tim (lưu id)
     private val _likedPostIds = MutableStateFlow<Set<String>>(emptySet())
     val likedPostIds: StateFlow<Set<String>> = _likedPostIds
 
-    // thông báo lỗi (null = không có lỗi)
+    private var endReached = false
+
+    private suspend fun loadLikedIds(list: List<Post>): Set<String> =
+        list.filter { try { likeRepo.isLiked(it.id) } catch (e: Exception) { false } }
+            .map { it.id }
+            .toSet()
 
     init {
         refresh()
@@ -45,7 +48,9 @@ class HomeFeedViewModel(
             _isRefreshing.value = true
             try {
                 val firstPage = postRepo.feedPage(after = null, limit = PAGE_SIZE)
+                val liked = loadLikedIds(firstPage)
                 _posts.value = firstPage
+                _likedPostIds.value = liked
                 endReached = firstPage.size < PAGE_SIZE
             } catch (e: Exception) {
                 _errorMessage.value = "Couldn't load feed"
@@ -77,7 +82,9 @@ class HomeFeedViewModel(
             _isLoadingMore.value = true
             try {
                 val nextPage = postRepo.feedPage(after = _posts.value.lastOrNull(), limit = PAGE_SIZE)
+                val liked = loadLikedIds(nextPage)
                 _posts.value = _posts.value + nextPage
+                _likedPostIds.value = _likedPostIds.value + liked
                 endReached = nextPage.size < PAGE_SIZE
             } catch (e: Exception) {
                 _errorMessage.value = "Couldn't load more posts"
@@ -87,13 +94,11 @@ class HomeFeedViewModel(
         }
     }
 
-
     // Cộng hoặc trừ số like của 1 bài (them = 1 là tăng, them = -1 là giảm)
     private fun doiSoLike(postId: String, them: Long) {
         val danhSachMoi = mutableListOf<Post>()
         for (post in _posts.value) {
             if (post.id == postId) {
-
                 danhSachMoi.add(post.copy(likeCount = post.likeCount + them))
             } else {
                 danhSachMoi.add(post)
@@ -130,6 +135,7 @@ class HomeFeedViewModel(
             }
         }
     }
+
     companion object {
         private const val PAGE_SIZE = 10
     }
