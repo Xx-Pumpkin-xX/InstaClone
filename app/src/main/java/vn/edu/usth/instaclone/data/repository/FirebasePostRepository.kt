@@ -116,33 +116,4 @@ class FirebasePostRepository : PostRepository {
         batch.update(userRef, mapOf("postCount" to FieldValue.increment(-1), "counterMutation" to mapOf("kind" to "post", "id" to postRef.id)))
         batch.commit().await()
     }
-
-    override suspend fun likePost(postId: String) {
-        // Phải đăng nhập mới like được
-        val currentUser = auth.currentUser
-            ?: throw IllegalStateException("Must be signed in to like a post")
-
-        val postRef = db.collection("posts").document(postId)
-        // Mỗi người like một bài = một document, tên document là uid của người đó
-        val likeRef = postRef.collection("likes").document(currentUser.uid)
-
-        // batch: làm hai việc cùng lúc, hoặc cùng thành công, hoặc cùng thất bại
-        val batch = db.batch()
-        batch.set(likeRef, hashMapOf("createdAt" to FieldValue.serverTimestamp()))  // ghi "mình đã like"
-        batch.update(postRef, "likeCount", FieldValue.increment(1))                 // số like +1
-        batch.commit().await()
-    }
-
-    override suspend fun unlikePost(postId: String) {
-        val currentUser = auth.currentUser
-            ?: throw IllegalStateException("Must be signed in to unlike a post")
-
-        val postRef = db.collection("posts").document(postId)
-        val likeRef = postRef.collection("likes").document(currentUser.uid)
-
-        val batch = db.batch()
-        batch.delete(likeRef)                                                       // xóa "mình đã like"
-        batch.update(postRef, "likeCount", FieldValue.increment(-1))                // số like -1
-        batch.commit().await()
-    }
 }

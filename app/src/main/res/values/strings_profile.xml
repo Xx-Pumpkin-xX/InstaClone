@@ -17,4 +17,15 @@
     <string name="profile_offline_banner">Offline</string>
     <string name="profile_avatar">Avatar of %1$s</string>
     <string name="profile_post_by">Post by %1$s</string>
+    <string name="edit_profile_title">Edit profile</string>
+    <string name="edit_profile_back">Back</string>
+    <string name="edit_profile_avatar">Profile avatar</string>
+    <string name="edit_profile_change_photo">Change photo</string>
+    <string name="edit_profile_username">Username</string>
+    <string name="edit_profile_username_read_only">Username cannot be changed</string>
+    <string name="edit_profile_display_name">Display name</string>
+    <string name="edit_profile_display_name_too_long">Use at most 30 characters</string>
+    <string name="edit_profile_bio">Bio</string>
+    <string name="edit_profile_bio_too_long">Use at most 150 characters</string>
+    <string name="edit_profile_save">Save</string>
 </resources>
