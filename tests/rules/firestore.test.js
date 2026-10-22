@@ -157,17 +157,25 @@ describe('Users and usernames', () => {
     const bob = env.authenticatedContext('bob').firestore();
 
     await assertFails(register(bob, 'bob', 'alice'));
-    });
-  }
+  });
 });
 
 describe('Post author avatar updates', () => {
   async function seedPost() {
+    const alice = env.authenticatedContext('alice').firestore();
+    await register(alice, 'alice', 'alice');
+    await updateDoc(doc(alice, 'users', 'alice'), { avatarUrl: 'https://example.com/new.jpg' });
     await env.withSecurityRulesDisabled(async (context) => {
       await setDoc(doc(context.firestore(), 'posts', 'post-1'), {
         authorId: 'alice',
+        authorUsername: 'alice',
         authorAvatarUrl: 'https://example.com/old.jpg',
-        caption: 'Original caption'
+        imageUrl: 'https://example.com/post.jpg',
+        imagePath: 'images/posts/alice/post-1.jpg',
+        caption: 'Original caption',
+        likeCount: 0,
+        commentCount: 0,
+        createdAt: serverTimestamp()
       });
     });
   }
