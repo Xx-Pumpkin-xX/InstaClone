@@ -71,6 +71,22 @@ class SearchViewModelTest {
     }
 
     @Test
+    fun newQuery_clearsPreviousResultsImmediately() = runTest {
+        val repository = RecordingUserRepository()
+        val viewModel = searchViewModel(repository)
+
+        viewModel.onQueryChange("ph")
+        advanceTimeBy(SearchViewModel.DEBOUNCE_MILLIS)
+        runCurrent()
+        assertEquals(listOf("phong"), viewModel.uiState.value.results.map { it.username })
+
+        viewModel.onQueryChange("phz")
+
+        assertEquals("phz", viewModel.uiState.value.query)
+        assertTrue(viewModel.uiState.value.results.isEmpty())
+    }
+
+    @Test
     fun rapidTyping_searchesOnlyForTheLatestQuery() = runTest {
         val repository = RecordingUserRepository()
         val viewModel = searchViewModel(repository)
