@@ -136,7 +136,7 @@ fun NewPostScreen(
                             text = "Share",
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp,
-                            color = if (isShareEnabled) MaterialTheme.colorScheme.primary else Color.Gray
+                            color = if (isShareEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha=0.38f)
                         )
                     }
                 }

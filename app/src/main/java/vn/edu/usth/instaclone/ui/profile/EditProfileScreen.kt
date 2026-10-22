@@ -117,12 +117,12 @@ fun EditProfileScreen(
                     model = avatarModel,
                     contentDescription = stringResource(R.string.edit_profile_avatar),
                     contentScale = ContentScale.Crop,
-                    placeholder = ColorPainter(Color.LightGray),
-                    error = ColorPainter(Color.LightGray),
+                    placeholder = ColorPainter(MaterialTheme.colorScheme.surfaceVariant),
+                    error = ColorPainter(MaterialTheme.colorScheme.surfaceVariant),
                     modifier = Modifier
                         .size(104.dp)
                         .clip(CircleShape)
-                        .background(Color.LightGray),
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
                 )
                 Button(
                     onClick = {
