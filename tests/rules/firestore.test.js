@@ -116,6 +116,18 @@ describe('Users and usernames', () => {
     );
   });
 
+  it('rejects display names over 30 characters and bios over 150 characters', async () => {
+    const db = env.authenticatedContext('alice').firestore();
+    await register(db, 'alice', 'alice');
+
+    await assertFails(
+      updateDoc(doc(db, 'users', 'alice'), { displayName: 'x'.repeat(31) })
+    );
+    await assertFails(
+      updateDoc(doc(db, 'users', 'alice'), { bio: 'x'.repeat(151) })
+    );
+  });
+
   it('can not update other profile', async () => {
     const alice = env.authenticatedContext('alice').firestore();
     await register(alice, 'alice', 'alice');
@@ -145,6 +157,53 @@ describe('Users and usernames', () => {
     const bob = env.authenticatedContext('bob').firestore();
 
     await assertFails(register(bob, 'bob', 'alice'));
+    });
+  }
+});
+
+describe('Post author avatar updates', () => {
+  async function seedPost() {
+    await env.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'posts', 'post-1'), {
+        authorId: 'alice',
+        authorAvatarUrl: 'https://example.com/old.jpg',
+        caption: 'Original caption'
+      });
+    });
+  }
+
+  it('allows the author to update only the copied avatar URL', async () => {
+    await seedPost();
+    const alice = env.authenticatedContext('alice').firestore();
+
+    await assertSucceeds(
+      updateDoc(doc(alice, 'posts', 'post-1'), {
+        authorAvatarUrl: 'https://example.com/new.jpg'
+      })
+    );
+  });
+
+  it('denies another member from updating the copied avatar URL', async () => {
+    await seedPost();
+    const bob = env.authenticatedContext('bob').firestore();
+
+    await assertFails(
+      updateDoc(doc(bob, 'posts', 'post-1'), {
+        authorAvatarUrl: 'https://example.com/new.jpg'
+      })
+    );
+  });
+
+  it('denies changing a post field while updating the avatar URL', async () => {
+    await seedPost();
+    const alice = env.authenticatedContext('alice').firestore();
+
+    await assertFails(
+      updateDoc(doc(alice, 'posts', 'post-1'), {
+        authorAvatarUrl: 'https://example.com/new.jpg',
+        caption: 'Changed caption'
+      })
+    );
   });
 });
 describe('FRS registration username policy', () => {
