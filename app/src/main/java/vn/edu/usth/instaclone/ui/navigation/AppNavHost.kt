@@ -22,6 +22,7 @@ import vn.edu.usth.instaclone.ui.auth.LoginScreen
 import vn.edu.usth.instaclone.ui.auth.RegisterScreen
 import vn.edu.usth.instaclone.ui.chat.ChatScreen
 import vn.edu.usth.instaclone.ui.chat.ConversationListScreen
+import vn.edu.usth.instaclone.ui.profile.EditProfileScreen
 import vn.edu.usth.instaclone.ui.profile.ProfileScreen
 import vn.edu.usth.instaclone.ui.post.PostDetailScreen
 import vn.edu.usth.instaclone.ui.auth.LogoutDialog
@@ -148,7 +149,10 @@ fun AppNavHost() {
                 }
             }
             composable(Routes.EDIT_PROFILE) {
-                PlaceholderScreen("S-07 Edit profile", owner = "Nam . T-15")
+                EditProfileScreen(
+                    onBack = { navController.popBackStack() },
+                    onSaved = { navController.popBackStack() },
+                )
             }
             composable(Routes.CHAT) { entry ->
                 val userId = entry.arguments?.getString("userId") ?: ""

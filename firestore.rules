@@ -12,10 +12,10 @@ service cloud.firestore {
     }
 
     //username chữ thường, số, dấu gạch dưới
-    //dài 3–20 ký tự
+    //dài 3–30 ký tự
     function validUsername(username) {
       return username is string
-      && username.matches('^[a-z0-9_]{3,20}$');
+      && username.matches('^[a-z0-9_.]{3,30}$');
     }
 
     function validUser(data) {
@@ -35,7 +35,9 @@ service cloud.firestore {
 
       && validUsername(data.username)
       && data.displayName is string
+      && data.displayName.size() <= 30
       && data.bio is string
+      && data.bio.size() <= 150
       && data.avatarUrl is string
       && data.postCount is int
       && data.followerCount is int
@@ -83,6 +85,16 @@ service cloud.firestore {
       ).data.username == username;
 
       allow update, delete: if false;
+    }
+
+    match /posts/{postId} {
+      allow read: if signedIn();
+
+      allow update: if owner(resource.data.authorId)
+      && request.resource.data.authorId == resource.data.authorId
+      && request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(['authorAvatarUrl'])
+      && request.resource.data.authorAvatarUrl is string;
     }
   }
 }
