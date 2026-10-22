@@ -2,6 +2,7 @@ package vn.edu.usth.instaclone.data.repository
 
 import vn.edu.usth.instaclone.data.model.Comment
 import kotlin.random.Random
+import vn.edu.usth.instaclone.data.AppContainer
 
 class FakeCommentRepository(
     private val postRepo: FakePostRepository,
@@ -46,12 +47,13 @@ class FakeCommentRepository(
 
     override suspend fun addComment(postId: String, text: String) {
         val list = listFor(postId)
+        val me = AppContainer.authRepository.currentUserId.value ?: "me"
         list.add(
             0,// chèn vào ĐẦU danh sách (không có số này thì nó chèn vào CUỐI)
             Comment(
                 id = "c${nextId++}",
-                authorId = "demo-uid",
-                authorUsername = "demo-user",
+                authorId = me,
+                authorUsername = if (me == "me") "nam_dev" else "you",
                 text = text,
             )
         )

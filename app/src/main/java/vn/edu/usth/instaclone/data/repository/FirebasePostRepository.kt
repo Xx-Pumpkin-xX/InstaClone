@@ -104,7 +104,7 @@ class FirebasePostRepository(
             userRef,
             mapOf(
                 "postCount" to FieldValue.increment(1),
-                "postMutationId" to postRef.id,
+                "counterMutation" to mapOf("kind" to "post", "id" to postRef.id),
             ),
         )
         batch.commit().await()
@@ -146,7 +146,7 @@ class FirebasePostRepository(
             userRef,
             mapOf(
                 "postCount" to FieldValue.increment(-1),
-                "postMutationId" to postId,
+                "counterMutation" to mapOf("kind" to "post", "id" to postId),
             ),
         )
         batch.commit().await()

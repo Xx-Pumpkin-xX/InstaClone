@@ -6,33 +6,53 @@ import vn.edu.usth.instaclone.data.AppContainer
 import vn.edu.usth.instaclone.data.repository.FollowRepository
 
 /**
- * Fake FollowRepository (T-23 support): an in-memory follow graph.
+ * Fake FollowRepository for unit tests and Compose previews.
  *
- * FR-14 only reads [isFollowing] to label the Follow/Following button. The write
- * behaviour and its tests belong to FR-16.
+ * When a [userRepository] is supplied, [follow] and [unfollow] also change both
+ * profile counters, matching the Firebase transaction (FR-16).
  */
 class FakeFollowRepository(
     private val myId: () -> String = {
         AppContainer.authRepository.currentUserId.value ?: "me"
     },
     private val initialFollowing: Set<String> = setOf("user-tram", "user-phong"),
+    private val userRepository: FakeUserRepository? = null,
 ) : FollowRepository {
 
     private val followingByUser = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
     private val seededUsers = mutableSetOf<String>()
 
     override suspend fun isFollowing(targetUid: String): Boolean {
-        return followsOf(myId()).contains(targetUid)
+        val me = myId()
+        if (targetUid.isBlank() || targetUid == me) return false
+        return followsOf(me).contains(targetUid)
     }
 
     override suspend fun follow(targetUid: String) {
         val me = myId()
-        followingByUser.update { it + (me to (followsOf(me) + targetUid)) }
+        require(targetUid.isNotBlank()) { "Target user is required" }
+        require(targetUid != me) { "Cannot follow yourself" }
+        if (userRepository != null && userRepository.getUser(targetUid) == null) {
+            throw IllegalStateException("User not found")
+        }
+
+        val current = followsOf(me)
+        if (current.contains(targetUid)) return
+
+        followingByUser.update { it + (me to (current + targetUid)) }
+        userRepository?.applyFollowChange(me, targetUid, following = true)
     }
 
     override suspend fun unfollow(targetUid: String) {
         val me = myId()
-        followingByUser.update { it + (me to (followsOf(me) - targetUid)) }
+        require(targetUid.isNotBlank()) { "Target user is required" }
+        require(targetUid != me) { "Cannot unfollow yourself" }
+
+        val current = followsOf(me)
+        if (!current.contains(targetUid)) return
+
+        followingByUser.update { it + (me to (current - targetUid)) }
+        userRepository?.applyFollowChange(me, targetUid, following = false)
     }
 
     override suspend fun followingIds(): List<String> {

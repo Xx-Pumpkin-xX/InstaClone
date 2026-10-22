@@ -1,16 +1,19 @@
 package vn.edu.usth.instaclone.ui.profile
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import vn.edu.usth.instaclone.data.model.Post
 import vn.edu.usth.instaclone.data.model.User
+import vn.edu.usth.instaclone.data.repository.FollowRepository
 import vn.edu.usth.instaclone.data.repository.PostRepository
 import vn.edu.usth.instaclone.data.repository.UserRepository
 import vn.edu.usth.instaclone.data.repository.fake.FakeFollowRepository
@@ -45,6 +48,9 @@ class ProfileViewModelTest {
         assertEquals("tram", state.user?.username)
         assertEquals(listOf("post-1"), state.posts.map { it.id })
         assertTrue(state.isFollowing)
+        assertEquals(98L, state.followerCount)
+        assertFalse(state.isFollowPending)
+        assertNull(state.followError)
     }
 
     @Test
@@ -100,6 +106,149 @@ class ProfileViewModelTest {
         assertEquals(ProfileViewModel.LOAD_FAILED_MESSAGE, state.errorMessage)
     }
 
+    @Test
+    fun followOtherProfile_updatesButtonAndFollowerCount() {
+        val viewModel = viewModel(userId = "user-tram", currentUserId = "me")
+        assertEquals(98L, viewModel.uiState.value.followerCount)
+
+        viewModel.toggleFollow()
+
+        val state = viewModel.uiState.value
+        assertTrue(state.isFollowing)
+        assertEquals(99L, state.followerCount)
+        assertEquals(99L, state.user?.followerCount ?: -1L)
+        assertFalse(state.isFollowPending)
+        assertNull(state.followError)
+    }
+
+    @Test
+    fun unfollowOtherProfile_updatesButtonAndFollowerCount() {
+        val viewModel = viewModel(
+            userId = "user-tram",
+            currentUserId = "me",
+            following = setOf("user-tram"),
+        )
+        assertTrue(viewModel.uiState.value.isFollowing)
+        assertEquals(98L, viewModel.uiState.value.followerCount)
+
+        viewModel.toggleFollow()
+
+        val state = viewModel.uiState.value
+        assertFalse(state.isFollowing)
+        assertEquals(97L, state.followerCount)
+        assertEquals(97L, state.user?.followerCount ?: -1L)
+        assertFalse(state.isFollowPending)
+    }
+
+    @Test
+    fun followFailure_keepsStateAndShowsMessage() {
+        val viewModel = viewModel(
+            userId = "user-tram",
+            currentUserId = "me",
+            followRepository = ThrowingFollowRepository(IllegalStateException("boom")),
+        )
+        val before = viewModel.uiState.value
+
+        viewModel.toggleFollow()
+
+        val state = viewModel.uiState.value
+        assertFalse(state.isFollowing)
+        assertEquals(before.followerCount, state.followerCount)
+        assertFalse(state.isFollowPending)
+        assertEquals(ProfileViewModel.FOLLOW_FAILED_MESSAGE, state.followError)
+    }
+
+    @Test
+    fun followOffline_keepsStateAndShowsOfflineMessage() {
+        val viewModel = viewModel(
+            userId = "user-tram",
+            currentUserId = "me",
+            followRepository = ThrowingFollowRepository(IOException("offline")),
+        )
+        val before = viewModel.uiState.value
+
+        viewModel.toggleFollow()
+
+        val state = viewModel.uiState.value
+        assertFalse(state.isFollowing)
+        assertEquals(before.followerCount, state.followerCount)
+        assertEquals(ProfileViewModel.OFFLINE_MESSAGE, state.followError)
+    }
+
+    @Test
+    fun followOnOwnProfile_doesNothing() {
+        val followRepository = BlockingFollowRepository()
+        val viewModel = viewModel(
+            userId = "me",
+            currentUserId = "me",
+            followRepository = followRepository,
+        )
+        val before = viewModel.uiState.value
+
+        viewModel.toggleFollow()
+
+        assertEquals(0, followRepository.followCalls)
+        assertEquals(before, viewModel.uiState.value)
+    }
+
+    @Test
+    fun secondTapWhilePending_isIgnored() {
+        val followRepository = BlockingFollowRepository()
+        val viewModel = viewModel(
+            userId = "user-tram",
+            currentUserId = "me",
+            followRepository = followRepository,
+        )
+
+        viewModel.toggleFollow()
+        assertTrue(viewModel.uiState.value.isFollowPending)
+
+        viewModel.toggleFollow()
+        assertEquals(1, followRepository.followCalls)
+
+        followRepository.gate.complete(Unit)
+
+        val state = viewModel.uiState.value
+        assertTrue(state.isFollowing)
+        assertEquals(99L, state.followerCount)
+        assertFalse(state.isFollowPending)
+    }
+
+    @Test
+    fun retryWhileFollowPending_doesNotReload() {
+        val followRepository = BlockingFollowRepository()
+        val viewModel = viewModel(
+            userId = "user-tram",
+            currentUserId = "me",
+            followRepository = followRepository,
+        )
+
+        viewModel.toggleFollow()
+        viewModel.retry()
+
+        val state = viewModel.uiState.value
+        assertFalse(state.isLoading)
+        assertTrue(state.isFollowPending)
+
+        followRepository.gate.complete(Unit)
+        assertFalse(viewModel.uiState.value.isFollowPending)
+    }
+
+    @Test
+    fun clearFollowError_clearsMessage() {
+        val viewModel = viewModel(
+            userId = "user-tram",
+            currentUserId = "me",
+            followRepository = ThrowingFollowRepository(IllegalStateException("boom")),
+        )
+        viewModel.toggleFollow()
+        assertNotNull(viewModel.uiState.value.followError)
+
+        viewModel.clearFollowError()
+
+        assertNull(viewModel.uiState.value.followError)
+    }
+
     private fun viewModel(
         userId: String,
         currentUserId: String,
@@ -109,15 +258,18 @@ class ProfileViewModelTest {
             myId = { currentUserId },
             latencyMillis = 0,
         ),
+        followRepository: FollowRepository? = null,
     ): ProfileViewModel {
+        val resolvedFollowRepository = followRepository ?: FakeFollowRepository(
+            myId = { currentUserId },
+            initialFollowing = following,
+            userRepository = userRepository as? FakeUserRepository,
+        )
         return ProfileViewModel(
             userId = userId,
             userRepository = userRepository,
             postRepository = postRepository,
-            followRepository = FakeFollowRepository(
-                myId = { currentUserId },
-                initialFollowing = following,
-            ),
+            followRepository = resolvedFollowRepository,
             currentUserId = { currentUserId },
             scope = scope,
         )
@@ -151,5 +303,34 @@ class ProfileViewModelTest {
         override suspend fun updateProfile(displayName: String, bio: String, avatarUrl: String?) = throw failure
 
         override suspend fun searchByPrefix(prefix: String, limit: Int): List<User> = throw failure
+    }
+
+    private class ThrowingFollowRepository(private val failure: Exception) : FollowRepository {
+        override suspend fun isFollowing(targetUid: String): Boolean = false
+
+        override suspend fun follow(targetUid: String) = throw failure
+
+        override suspend fun unfollow(targetUid: String) = throw failure
+
+        override suspend fun followingIds(): List<String> = emptyList()
+    }
+
+    private class BlockingFollowRepository : FollowRepository {
+        val gate = CompletableDeferred<Unit>()
+        var followCalls = 0
+            private set
+
+        override suspend fun isFollowing(targetUid: String): Boolean = false
+
+        override suspend fun follow(targetUid: String) {
+            followCalls++
+            gate.await()
+        }
+
+        override suspend fun unfollow(targetUid: String) {
+            gate.await()
+        }
+
+        override suspend fun followingIds(): List<String> = emptyList()
     }
 }
