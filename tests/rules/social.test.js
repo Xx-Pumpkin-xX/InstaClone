@@ -20,7 +20,7 @@ describe('T08 complete collections and atomic invariants',()=>{
  beforeEach(async()=>{await env.clearFirestore(); await seed({'users/alice':profile('alice'),'users/bob':profile('bob'),'users/eve':profile('eve'),'posts/p':{...post(),createdAt:stamp}});});
  describe('posts and user counters',()=>{
   it('allows atomic post creation',async()=>{await assertSucceeds(createPost(dbFor('alice')));});
-  it('allows atomic owner delete',async()=>{const db=dbFor('alice');await createPost(db);const b=writeBatch(db);b.delete(doc(db,'posts/new'));b.update(doc(db,'users/alice'),{postCount:0,counterMutation:{kind:'post',id:'new'}});await assertSucceeds(b.commit());});
+  it('allows atomic owner delete with a cleanup marker',async()=>{const db=dbFor('alice');await createPost(db);const b=writeBatch(db);b.delete(doc(db,'posts/new'));b.update(doc(db,'users/alice'),{postCount:0,counterMutation:{kind:'post',id:'new'}});b.set(doc(db,'postDeletionCleanup/new'),{authorId:'alice',imagePath:'images/posts/alice/p.jpg'});await assertSucceeds(b.commit());});
   it('rejects creation without user counter',async()=>{await assertFails(setDoc(doc(dbFor('alice'),'posts/new'),post()));});
   it('rejects standalone +1 and -1 counters',async()=>{for(const n of [1,-1])await assertFails(updateDoc(doc(dbFor('alice'),'users/alice'),{postCount:n,counterMutation:{kind:'post',id:'p'}}));});
   it('rejects forged author',async()=>{await assertFails(createPost(dbFor('bob')));});

@@ -4,4 +4,5 @@
     <string name="home_avatar">Avatar of %1$s</string>
     <string name="home_like">Like</string>
     <string name="home_comments">%1$d comments</string>
+    <string name="home_retry_cleanup">Retry cleanup</string>
 </resources>

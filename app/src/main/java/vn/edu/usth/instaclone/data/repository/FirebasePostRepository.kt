@@ -5,12 +5,18 @@ import com.google.firebase.auth.auth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.firestore
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
 import vn.edu.usth.instaclone.data.model.Post
 
-class FirebasePostRepository : PostRepository {
+class FirebasePostRepository(
+    private val imageStorage: ImageStorage,
+) : PostRepository {
     private val db = Firebase.firestore
     private val auth = Firebase.auth
+    private val deletionMutex = Mutex()
 
     override suspend fun feedPage(after: Post?, limit: Int): List<Post> {
         var query = db.collection("posts")
@@ -75,7 +81,9 @@ class FirebasePostRepository : PostRepository {
             ?: throw IllegalStateException("Must be signed in to create a post")
 
         val userDoc = db.collection("users").document(currentUser.uid).get().await()
-        val authorUsername = userDoc.getString("username") ?: currentUser.displayName ?: "user"
+        check(userDoc.exists()) { "Member profile not found" }
+        val authorUsername = userDoc.getString("username")
+            ?: throw IllegalStateException("Member username not found")
         val authorAvatarUrl = userDoc.getString("avatarUrl") ?: ""
 
         val postRef = db.collection("posts").document()
@@ -95,25 +103,116 @@ class FirebasePostRepository : PostRepository {
 
         val batch = db.batch()
         batch.set(postRef, postData)
-        batch.update(userRef, mapOf("postCount" to FieldValue.increment(1), "counterMutation" to mapOf("kind" to "post", "id" to postRef.id)))
+        batch.update(
+            userRef,
+            mapOf(
+                "postCount" to FieldValue.increment(1),
+                "counterMutation" to mapOf("kind" to "post", "id" to postRef.id),
+            ),
+        )
         batch.commit().await()
 
         return postRef.id
     }
 
-    override suspend fun deletePost(postId: String) {
+    override suspend fun deletePost(postId: String) =
+        deletionMutex.withLock { deletePostLocked(postId) }
+
+    private suspend fun deletePostLocked(postId: String) {
         val currentUser = auth.currentUser
             ?: throw IllegalStateException("Must be signed in to delete a post")
 
         val postRef = db.collection("posts").document(postId)
+        val cleanupRef = db.collection("postDeletionCleanup").document(postId)
         val postDoc = postRef.get().await()
-        if (!postDoc.exists()) return
+        val cleanupSnapshot = if (postDoc.exists()) {
+            null
+        } else {
+            try {
+                cleanupRef.get().await()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                throw PostDeletionCleanupException(postId, e)
+            }
+        }
+        if (!postDoc.exists() && cleanupSnapshot?.exists() != true) return
 
-        val userRef = db.collection("users").document(currentUser.uid)
+        if (postDoc.exists()) {
+            check(postDoc.getString("authorId") == currentUser.uid) {
+                "Can only delete your own post"
+            }
+            val imagePath = postDoc.getString("imagePath").orEmpty()
+            if (imagePath.isNotBlank()) {
+                val validImagePath = Regex(
+                    "^images/posts/${Regex.escape(currentUser.uid)}/[A-Za-z0-9_-]+\\.(jpg|png)$"
+                )
+                require(validImagePath.matches(imagePath)) {
+                    "Post image path does not belong to its author"
+                }
+            }
 
-        val batch = db.batch()
-        batch.delete(postRef)
-        batch.update(userRef, mapOf("postCount" to FieldValue.increment(-1), "counterMutation" to mapOf("kind" to "post", "id" to postRef.id)))
-        batch.commit().await()
+            val userRef = db.collection("users").document(currentUser.uid)
+            val batch = db.batch()
+            batch.delete(postRef)
+            batch.update(
+                userRef,
+                mapOf(
+                    "postCount" to FieldValue.increment(-1),
+                    "counterMutation" to mapOf("kind" to "post", "id" to postId),
+                ),
+            )
+            batch.set(
+                cleanupRef,
+                mapOf(
+                    "authorId" to currentUser.uid,
+                    "imagePath" to imagePath,
+                ),
+            )
+            batch.commit().await()
+        }
+
+        try {
+            val cleanup = if (postDoc.exists()) {
+                cleanupRef.get().await()
+            } else {
+                requireNotNull(cleanupSnapshot)
+            }
+            check(cleanup.getString("authorId") == currentUser.uid) {
+                "Can only clean up your own deleted post"
+            }
+            val likes = postRef.collection("likes").get().await().documents
+            val comments = postRef.collection("comments").get().await().documents
+            (likes + comments).chunked(MAX_BATCH_WRITES).forEach { documents ->
+                val childBatch = db.batch()
+                documents.forEach { document -> childBatch.delete(document.reference) }
+                childBatch.commit().await()
+            }
+
+            cleanup.getString("imagePath")
+                ?.takeIf(String::isNotBlank)
+                ?.let { imageStorage.delete(it) }
+            cleanupRef.delete().await()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw PostDeletionCleanupException(postId, e)
+        }
+    }
+
+    override suspend fun retryPendingPostCleanups() {
+        val uid = auth.currentUser?.uid ?: return
+        val pending = db.collection("postDeletionCleanup")
+            .whereEqualTo("authorId", uid)
+            .get()
+            .await()
+        pending.documents.forEach { document -> deletePost(document.id) }
+    }
+
+    private companion object {
+        const val MAX_BATCH_WRITES = 500
     }
 }
+
+class PostDeletionCleanupException(val postId: String, cause: Exception) :
+    Exception("Post deleted, but related data could not be cleaned up. Retry cleanup.", cause)

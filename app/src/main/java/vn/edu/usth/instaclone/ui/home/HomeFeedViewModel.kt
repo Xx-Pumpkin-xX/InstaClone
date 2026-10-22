@@ -2,13 +2,19 @@ package vn.edu.usth.instaclone.ui.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import vn.edu.usth.instaclone.data.AppContainer
 import vn.edu.usth.instaclone.data.model.Post
 import vn.edu.usth.instaclone.data.repository.LikeRepository
+import vn.edu.usth.instaclone.data.repository.PostDeletionCleanupException
 import vn.edu.usth.instaclone.data.repository.PostRepository
+import kotlin.time.Duration.Companion.seconds
 
 class HomeFeedViewModel(
     private val postRepo: PostRepository = AppContainer.postRepository,
@@ -28,6 +34,9 @@ class HomeFeedViewModel(
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage
 
+    private val _cleanupRetryPostId = MutableStateFlow<String?>(null)
+    val cleanupRetryPostId: StateFlow<String?> = _cleanupRetryPostId
+
     // bài nào mình đã tim (lưu id)
     private val _likedPostIds = MutableStateFlow<Set<String>>(emptySet())
     val likedPostIds: StateFlow<Set<String>> = _likedPostIds
@@ -39,11 +48,33 @@ class HomeFeedViewModel(
             .map { it.id }
             .toSet()
 
+    private var cleanupJob: Job? = null
+
     init {
         refresh()
     }
 
+    private fun retryCleanupInBackground() {
+        if (cleanupJob?.isActive == true) return
+        cleanupJob = viewModelScope.launch {
+            try {
+                withTimeout(10.seconds) { postRepo.retryPendingPostCleanups() }
+            } catch (e: TimeoutCancellationException) {
+                // Markers remain persisted so the next refresh can retry.
+                _errorMessage.value = "Couldn't retry pending post cleanup"
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: PostDeletionCleanupException) {
+                _errorMessage.value = e.message
+                _cleanupRetryPostId.value = e.postId
+            } catch (e: Exception) {
+                _errorMessage.value = "Couldn't retry pending post cleanup"
+            }
+        }
+    }
+
     fun refresh() {
+        retryCleanupInBackground()
         viewModelScope.launch {
             _isRefreshing.value = true
             try {
@@ -52,6 +83,8 @@ class HomeFeedViewModel(
                 _posts.value = firstPage
                 _likedPostIds.value = liked
                 endReached = firstPage.size < PAGE_SIZE
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _errorMessage.value = "Couldn't load feed"
             } finally {
@@ -66,14 +99,26 @@ class HomeFeedViewModel(
             try {
                 postRepo.deletePost(postId)
                 _posts.value = _posts.value.filter { it.id != postId }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: PostDeletionCleanupException) {
+                _posts.value = _posts.value.filter { it.id != postId }
+                _errorMessage.value = e.message
+                _cleanupRetryPostId.value = e.postId
             } catch (e: Exception) {
                 _errorMessage.value = "Couldn't delete the post"
             }
         }
     }
 
+    fun retryPostCleanup(postId: String) {
+        clearError()
+        deletePost(postId)
+    }
+
     fun clearError() {
         _errorMessage.value = null
+        _cleanupRetryPostId.value = null
     }
 
     fun loadMore() {
