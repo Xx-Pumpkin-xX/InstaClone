@@ -68,7 +68,111 @@ service cloud.firestore {
       && request.resource.data.diff(resource.data).affectedKeys()
         .hasOnly(['displayName', 'bio', 'avatarUrl']);
 
+      // Follow counter: a member may change their own followingCount by exactly +1 or -1.
+      allow update: if owner(uid)
+      && validUser(request.resource.data)
+      && request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(['followingCount'])
+      && (
+        request.resource.data.followingCount == resource.data.followingCount + 1
+        || request.resource.data.followingCount == resource.data.followingCount - 1
+      );
+
+      // Follower counter: another member may change it by exactly +1 or -1, but only
+      // when their own follower record is created or deleted in the same transaction.
+      allow update: if signedIn()
+      && request.auth.uid != uid
+      && validUser(request.resource.data)
+      && request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(['followerCount'])
+      && (
+        (
+          request.resource.data.followerCount == resource.data.followerCount + 1
+          && existsAfter(
+            /databases/$(database)/documents/users/$(uid)/followers/$(request.auth.uid)
+          )
+        )
+        || (
+          request.resource.data.followerCount == resource.data.followerCount - 1
+          && !existsAfter(
+            /databases/$(database)/documents/users/$(uid)/followers/$(request.auth.uid)
+          )
+        )
+      );
+
       allow delete: if false;
+    }
+
+    // users/{me}/following/{them}: only the follower may read or write it, and the
+    // reciprocal followers document and both counters must change in the same commit.
+    match /users/{uid}/following/{targetUid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+
+      allow create: if signedIn()
+      && request.auth.uid == uid
+      && targetUid != uid
+      && request.resource.data.keys().hasOnly(['createdAt'])
+      && request.resource.data.createdAt == request.time
+      && exists(/databases/$(database)/documents/users/$(targetUid))
+      && existsAfter(
+        /databases/$(database)/documents/users/$(targetUid)/followers/$(uid)
+      )
+      && getAfter(
+        /databases/$(database)/documents/users/$(uid)
+      ).data.followingCount == get(
+        /databases/$(database)/documents/users/$(uid)
+      ).data.followingCount + 1
+      && getAfter(
+        /databases/$(database)/documents/users/$(targetUid)
+      ).data.followerCount == get(
+        /databases/$(database)/documents/users/$(targetUid)
+      ).data.followerCount + 1;
+
+      allow delete: if signedIn()
+      && request.auth.uid == uid
+      && !existsAfter(
+        /databases/$(database)/documents/users/$(targetUid)/followers/$(uid)
+      )
+      && getAfter(
+        /databases/$(database)/documents/users/$(uid)
+      ).data.followingCount == get(
+        /databases/$(database)/documents/users/$(uid)
+      ).data.followingCount - 1
+      && (
+        !exists(/databases/$(database)/documents/users/$(targetUid))
+        || getAfter(
+          /databases/$(database)/documents/users/$(targetUid)
+        ).data.followerCount == get(
+          /databases/$(database)/documents/users/$(targetUid)
+        ).data.followerCount - 1
+      );
+
+      allow update: if false;
+    }
+
+    // users/{them}/followers/{me}: only the follower may create or delete it; the
+    // target and the follower may read it.
+    match /users/{uid}/followers/{followerUid} {
+      allow read: if signedIn()
+      && (request.auth.uid == uid || request.auth.uid == followerUid);
+
+      allow create: if signedIn()
+      && followerUid == request.auth.uid
+      && uid != followerUid
+      && request.resource.data.keys().hasOnly(['createdAt'])
+      && request.resource.data.createdAt == request.time
+      && exists(/databases/$(database)/documents/users/$(uid))
+      && existsAfter(
+        /databases/$(database)/documents/users/$(followerUid)/following/$(uid)
+      );
+
+      allow delete: if signedIn()
+      && followerUid == request.auth.uid
+      && !existsAfter(
+        /databases/$(database)/documents/users/$(followerUid)/following/$(uid)
+      );
+
+      allow update: if false;
     }
 
     match /usernames/{username} {
