@@ -95,7 +95,7 @@ class FirebasePostRepository : PostRepository {
 
         val batch = db.batch()
         batch.set(postRef, postData)
-        batch.update(userRef, "postCount", FieldValue.increment(1))
+        batch.update(userRef, mapOf("postCount" to FieldValue.increment(1), "counterMutation" to mapOf("kind" to "post", "id" to postRef.id)))
         batch.commit().await()
 
         return postRef.id
@@ -113,7 +113,7 @@ class FirebasePostRepository : PostRepository {
 
         val batch = db.batch()
         batch.delete(postRef)
-        batch.update(userRef, "postCount", FieldValue.increment(-1))
+        batch.update(userRef, mapOf("postCount" to FieldValue.increment(-1), "counterMutation" to mapOf("kind" to "post", "id" to postRef.id)))
         batch.commit().await()
     }
 
