@@ -55,8 +55,16 @@ class FakeFollowRepository(
         userRepository?.applyFollowChange(me, targetUid, following = false)
     }
 
+    /**
+     * Same contract as [vn.edu.usth.instaclone.data.repository.firebase.FirebaseFollowRepository.followingIds]:
+     * most recently followed first, capped at 30 (A-08). Insertion order is the
+     * follow order, so the newest entries are at the end of the set.
+     */
     override suspend fun followingIds(): List<String> {
-        return followsOf(myId()).take(MAX_FOLLOWING_IDS).toList()
+        return followsOf(myId())
+            .toList()
+            .takeLast(MAX_FOLLOWING_IDS)
+            .asReversed()
     }
 
     private fun followsOf(uid: String): Set<String> {
