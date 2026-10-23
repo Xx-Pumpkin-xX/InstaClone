@@ -100,4 +100,19 @@ class FakeFollowRepositoryTest {
 
         assertEquals(30, repository.followingIds().size)
     }
+
+    @Test
+    fun followingIds_returnsTheNewestThirtyMostRecentFirst() = runBlocking {
+        val repository = FakeFollowRepository(
+            myId = { "me" },
+            initialFollowing = emptySet(),
+        )
+        repeat(31) { index -> repository.follow("target-$index") }
+
+        val ids = repository.followingIds()
+
+        assertEquals("target-30", ids.first())
+        assertEquals("target-1", ids.last())
+        assertFalse(ids.contains("target-0"))
+    }
 }
