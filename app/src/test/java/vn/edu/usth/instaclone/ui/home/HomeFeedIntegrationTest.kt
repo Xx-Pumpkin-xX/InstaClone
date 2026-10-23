@@ -23,6 +23,7 @@ class HomeFeedIntegrationTest {
     @Test fun likeUnlikeStillWorkAfterDeleteMerge() = runTest(dispatcher) {
         val repo = FakePostRepository(myId = { "alice" })
         val vm = HomeFeedViewModel(postRepo = repo, likeRepo = FakeLikeRepository(repo))
+        vm.refresh()
         advanceUntilIdle()
         val post = vm.posts.value.first()
         vm.toggleLike(post.id)
@@ -39,6 +40,7 @@ class HomeFeedIntegrationTest {
         val repo = FakePostRepository(myId = { "alice" })
         val ownId = repo.createPost("https://example.com/test.jpg", "images/posts/alice/test.jpg", "test")
         val vm = HomeFeedViewModel(postRepo = repo, likeRepo = FakeLikeRepository(repo))
+        vm.refresh()
         advanceUntilIdle()
         vm.deletePost(ownId)
         advanceUntilIdle()
