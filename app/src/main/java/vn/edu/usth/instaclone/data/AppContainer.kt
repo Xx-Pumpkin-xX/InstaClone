@@ -19,7 +19,6 @@ import vn.edu.usth.instaclone.data.repository.firebase.FirebaseLikeRepository
 import vn.edu.usth.instaclone.data.repository.firebase.FirebaseUserRepository
 
 object AppContainer {
-    private val fakePostRepository by lazy { FakePostRepository() }
     val authRepository: AuthRepository by lazy { FirebaseAuthRepository() }
     val chatRepository: ChatRepository by lazy { FirebaseChatRepository() }
     val postRepository: PostRepository by lazy { FirebasePostRepository(imageStorage) }
