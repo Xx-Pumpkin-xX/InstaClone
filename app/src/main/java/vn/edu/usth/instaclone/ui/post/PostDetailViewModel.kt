@@ -82,7 +82,8 @@ class PostDetailViewModel(
             try {
                 commentRepo.addComment(postId, content)
                 allComments = commentRepo.comments(postId)
-                shown += 1
+                // The new comment is last in ascending order; reveal it even if older pages were hidden.
+                shown = allComments.size
                 publish()
                 onResult(true)
             } catch (e: Exception) {
