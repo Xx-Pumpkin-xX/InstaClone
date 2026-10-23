@@ -34,7 +34,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -49,7 +48,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.launch
 import vn.edu.usth.instaclone.data.AppContainer                       // MỚI
 import vn.edu.usth.instaclone.data.model.Comment
 import vn.edu.usth.instaclone.data.model.Post
@@ -107,7 +105,16 @@ fun PostDetailContent(
 ) {
     var text by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
-    val scope = rememberCoroutineScope()
+    var lastCommentBeforeSend by remember { mutableStateOf<String?>(null) }
+    var scrollAfterSend by remember { mutableStateOf(false) }
+
+    LaunchedEffect(scrollAfterSend, comments.lastOrNull()?.id) {
+        if (scrollAfterSend && comments.lastOrNull()?.id != lastCommentBeforeSend) {
+            val lastIndex = comments.lastIndex + if (post != null) 1 else 0
+            if (lastIndex >= 0) listState.animateScrollToItem(lastIndex)
+            scrollAfterSend = false
+        }
+    }
 
     // MỚI: bình luận đang chờ xác nhận xóa (null = không có)
     var commentToDelete by remember { mutableStateOf<Comment?>(null) }
@@ -214,10 +221,11 @@ fun PostDetailContent(
                 Spacer(Modifier.width(8.dp))
                 Button(
                     onClick = {
+                        lastCommentBeforeSend = comments.lastOrNull()?.id
                         onSend(text) { ok ->
                             if (ok) {
                                 text = ""
-                                scope.launch { listState.animateScrollToItem(0) }
+                                scrollAfterSend = true
                             }
                         }
                     },
