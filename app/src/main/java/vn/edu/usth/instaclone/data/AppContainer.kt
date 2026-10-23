@@ -3,7 +3,6 @@ package vn.edu.usth.instaclone.data
 import vn.edu.usth.instaclone.data.repository.AuthRepository
 import vn.edu.usth.instaclone.data.repository.ChatRepository
 import vn.edu.usth.instaclone.data.repository.CommentRepository
-import vn.edu.usth.instaclone.data.repository.FakePostRepository
 import vn.edu.usth.instaclone.data.repository.FirebaseImageStorage
 import vn.edu.usth.instaclone.data.repository.FirebasePostRepository
 import vn.edu.usth.instaclone.data.repository.FollowRepository
