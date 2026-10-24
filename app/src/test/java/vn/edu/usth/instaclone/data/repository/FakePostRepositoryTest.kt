@@ -133,6 +133,20 @@ class FakePostRepositoryTest {
     }
 
     @Test
+    fun cursorWithSameTimestamp_resumesAfterItsDocumentId() = runTest {
+        val repo = repository()
+        val newest = repo.feedPage(limit = 1).single()
+        // This cursor does not exist, but it sits just before `newest` at the
+        // same timestamp. Ordering by (createdAt, documentId) must still return
+        // `newest`; skipping the whole timestamp would leak/lose that post.
+        val ghost = Post(id = "0-ghost", createdAt = newest.createdAt)
+
+        val page = repo.feedPage(after = ghost, limit = 10)
+
+        assertEquals(newest.id, page.first().id)
+    }
+
+    @Test
     fun cursorWithoutCreatedAt_returnsEmpty() = runTest {
         val repo = repository(followedIds = listOf("user-tram"))
         val ghost = Post(id = "ghost")
