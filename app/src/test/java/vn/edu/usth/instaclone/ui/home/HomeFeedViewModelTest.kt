@@ -317,6 +317,39 @@ class HomeFeedViewModelTest {
         assertEquals(1, repo.cleanupCalls)
     }
 
+    @Test
+    fun failedLikeAfterModeSwitchDoesNotRollBackTheNewList() = runTest(dispatcher) {
+        val all = posts("all", 1, 10)
+        val followingPage = listOf(post("all-1", 2_000L), post("following-1", 1_999L))
+        val repo = StubPostRepository().apply {
+            feed = { _, _ -> all }
+            following = { _, _ -> followingPage }
+        }
+        val likes = GatedFailingLikeRepository()
+        val vm = model(repo, likes)
+        vm.refresh()
+        advanceUntilIdle()
+
+        vm.toggleLike("all-1")
+        runCurrent()
+        assertEquals(setOf("all-1"), vm.likedPostIds.value)
+
+        // The new mode's list comes from the server, so the optimistic change
+        // from the previous list must not be rolled back into it.
+        vm.selectMode(FeedMode.FOLLOWING)
+        advanceUntilIdle()
+        val beforeFailure = vm.posts.value.first { it.id == "all-1" }
+
+        likes.fail = true
+        likes.gate.complete(Unit)
+        advanceUntilIdle()
+
+        val afterFailure = vm.posts.value.first { it.id == "all-1" }
+        assertEquals(beforeFailure.likeCount, afterFailure.likeCount)
+        assertTrue(vm.likedPostIds.value.isEmpty())
+        assertEquals("Couldn't update like", vm.errorMessage.value)
+    }
+
     private fun post(id: String, second: Long) =
         Post(id = id, authorId = "author-$id", createdAt = Timestamp(second, 0))
 
@@ -330,6 +363,18 @@ class HomeFeedViewModelTest {
 
         override suspend fun setLiked(postId: String, like: Boolean) {
             if (like) liked.add(postId) else liked.remove(postId)
+        }
+    }
+
+    private class GatedFailingLikeRepository : LikeRepository {
+        val gate = CompletableDeferred<Unit>()
+        var fail = false
+
+        override suspend fun isLiked(postId: String) = false
+
+        override suspend fun setLiked(postId: String, like: Boolean) {
+            gate.await()
+            if (fail) throw IOException("offline")
         }
     }
 
