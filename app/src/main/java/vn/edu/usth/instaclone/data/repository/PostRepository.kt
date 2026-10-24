@@ -7,7 +7,9 @@ interface PostRepository {
      * The 10 (or [limit]) newest posts from everybody, newest first.
      *
      * [after] is an exclusive cursor: returned posts come strictly after it in
-     * `createdAt` descending order. `null` returns the first page.
+     * `(createdAt descending, document ID ascending)` order. `null` returns the
+     * first page. Posts sharing the cursor's `createdAt` but sorting later by ID
+     * are still returned, so a deleted cursor cannot skip them.
      */
     suspend fun feedPage(after: Post? = null, limit: Int = 10): List<Post>
 
