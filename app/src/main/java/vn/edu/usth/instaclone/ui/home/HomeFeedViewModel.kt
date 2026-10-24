@@ -261,6 +261,10 @@ class HomeFeedViewModel(
         if (!pendingLikes.add(postId)) return
 
         val nowLiked = postId !in _likedPostIds.value
+        // Which list the optimistic change belongs to. If the list is replaced
+        // (mode switch or refresh) before the request finishes, that new list
+        // already reflects the server, so rolling back would corrupt its count.
+        val requestGeneration = generation
 
         // Bước 1: đổi tim và số NGAY trên màn hình
         _likedPostIds.value =
@@ -274,10 +278,13 @@ class HomeFeedViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                // Bước 3: lỗi thì trả về như cũ
-                _likedPostIds.value =
-                    if (nowLiked) _likedPostIds.value - postId else _likedPostIds.value + postId
-                changeLike(postId, if (nowLiked) -1 else 1)
+                // Bước 3: lỗi thì trả về như cũ, nhưng chỉ trên danh sách đã
+                // nhận thay đổi lạc quan.
+                if (requestGeneration == generation) {
+                    _likedPostIds.value =
+                        if (nowLiked) _likedPostIds.value - postId else _likedPostIds.value + postId
+                    changeLike(postId, if (nowLiked) -1 else 1)
+                }
                 _errorMessage.value = "Couldn't update like"
             } finally {
                 pendingLikes.remove(postId)
