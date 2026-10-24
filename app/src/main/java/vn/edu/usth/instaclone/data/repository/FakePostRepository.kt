@@ -101,24 +101,28 @@ class FakePostRepository(
 
     /**
      * Exclusive cursor pagination, mirroring [FirebasePostRepository]:
-     * a live cursor document continues right after its position; a deleted
-     * cursor falls back to `createdAt` and skips posts sharing its timestamp.
+     * the cursor is the pair `(createdAt, documentId)` with `createdAt`
+     * descending and document ID ascending. A deleted cursor therefore
+     * resumes exactly after its position instead of skipping same-timestamp
+     * posts.
      */
     private fun page(all: List<Post>, after: Post?, limit: Int): List<Post> {
         if (limit <= 0) return emptyList()
         if (after == null) return all.take(limit)
 
-        val cursorIndex = all.indexOfFirst { it.id == after.id }
-        if (cursorIndex >= 0) return all.drop(cursorIndex + 1).take(limit)
-
         val cursorCreatedAt = after.createdAt ?: return emptyList()
-        return all.filter { olderThan(it.createdAt, cursorCreatedAt) }.take(limit)
+        return all.filter { isAfterCursor(it, cursorCreatedAt, after.id) }.take(limit)
     }
 
-    private fun olderThan(createdAt: Timestamp?, cursor: Timestamp): Boolean {
-        val value = createdAt ?: return false
-        return value.seconds < cursor.seconds ||
-            (value.seconds == cursor.seconds && value.nanoseconds < cursor.nanoseconds)
+    private fun isAfterCursor(post: Post, cursorCreatedAt: Timestamp, cursorId: String): Boolean {
+        val createdAt = post.createdAt ?: return false
+        if (createdAt.seconds != cursorCreatedAt.seconds) {
+            return createdAt.seconds < cursorCreatedAt.seconds
+        }
+        if (createdAt.nanoseconds != cursorCreatedAt.nanoseconds) {
+            return createdAt.nanoseconds < cursorCreatedAt.nanoseconds
+        }
+        return post.id > cursorId
     }
 
     override suspend fun userPosts(uid: String): List<Post> {
