@@ -1,9 +1,13 @@
 package vn.edu.usth.instaclone.data.repository
 
+import android.util.Log
 import com.google.firebase.Firebase
+import com.google.firebase.Timestamp
 import com.google.firebase.auth.auth
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.QuerySnapshot
 import com.google.firebase.firestore.firestore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
@@ -13,53 +17,128 @@ import vn.edu.usth.instaclone.data.model.Post
 
 class FirebasePostRepository(
     private val imageStorage: ImageStorage,
+    private val followRepository: FollowRepository,
 ) : PostRepository {
     private val db = Firebase.firestore
     private val auth = Firebase.auth
     private val deletionMutex = Mutex()
 
+    /**
+     * Returns the newest posts from everybody.
+     *
+     * Pages are ordered by `createdAt` descending only. The document ID is the
+     * implicit tie-breaker, but adding an explicit `orderBy(documentId())` would
+     * require an extra composite index, so the deleted-cursor case is handled by
+     * [runPageAfter] instead.
+     */
     override suspend fun feedPage(after: Post?, limit: Int): List<Post> {
-        var query = db.collection("posts")
+        if (limit <= 0) return emptyList()
+
+        val query = db.collection("posts")
             .orderBy("createdAt", Query.Direction.DESCENDING)
-            .limit(limit.toLong())
 
-        if (after != null) {
-            val lastDoc = db.collection("posts").document(after.id).get().await()
-            if (lastDoc.exists()) {
-                query = query.startAfter(lastDoc)
-            }
+        return if (after == null) {
+            runQuery(query.limit(limit.toLong()), "feedPage")
+        } else {
+            runPageAfter(query, after, limit, "feedPage")
         }
-
-        val snapshot = query.get().await()
-        return snapshot.toObjects(Post::class.java)
     }
 
     override suspend fun followingFeedPage(after: Post?, limit: Int): List<Post> {
+        if (limit <= 0) return emptyList()
         val currentUser = auth.currentUser ?: return emptyList()
-        val followingSnapshot = db.collection("users")
-            .document(currentUser.uid)
-            .collection("following")
-            .limit(30)
-            .get()
-            .await()
 
-        val followedUids = followingSnapshot.documents.map { it.id }
+        // A Firestore `in` query accepts at most 30 values (A-08). The follow
+        // repository returns the newest follows first, so the cap is deterministic.
+        val followedUids = followRepository.followingIds()
+            .filter { it != currentUser.uid }
+            .take(MAX_IN_VALUES)
         if (followedUids.isEmpty()) return emptyList()
 
-        var query = db.collection("posts")
+        val query = db.collection("posts")
             .whereIn("authorId", followedUids)
             .orderBy("createdAt", Query.Direction.DESCENDING)
-            .limit(limit.toLong())
 
-        if (after != null) {
-            val lastDoc = db.collection("posts").document(after.id).get().await()
-            if (lastDoc.exists()) {
-                query = query.startAfter(lastDoc)
+        return if (after == null) {
+            runQuery(query.limit(limit.toLong()), "followingFeedPage")
+        } else {
+            runPageAfter(query, after, limit, "followingFeedPage")
+        }
+    }
+
+    /**
+     * Returns the posts strictly after [after] in `(createdAt DESC, documentId ASC)`
+     * order, without an explicit document-ID `orderBy`.
+     *
+     * `startAt(cursorTime)` is inclusive, so it includes every post sharing the
+     * cursor's timestamp, even ones already shown. Posts at or before the cursor
+     * position are filtered out using the document ID as the tie-breaker. The
+     * first query asks for one extra document, so a normal page with no ties is
+     * still a single read; if the timestamp block is larger, the loop continues
+     * after the last document it saw.
+     */
+    private suspend fun runPageAfter(
+        baseQuery: Query,
+        after: Post,
+        limit: Int,
+        context: String,
+    ): List<Post> {
+        val cursorTime = after.createdAt ?: return emptyList()
+        val result = mutableListOf<Post>()
+        var pageCursor: DocumentSnapshot? = null
+
+        while (result.size < limit) {
+            val remaining = limit - result.size
+            val requested = if (pageCursor == null) remaining + 1 else remaining
+            val query = if (pageCursor == null) {
+                baseQuery.startAt(cursorTime).limit(requested.toLong())
+            } else {
+                baseQuery.startAfter(pageCursor).limit(requested.toLong())
             }
+            val snapshot = runQuerySnapshot(query, context)
+            if (snapshot.isEmpty) break
+
+            for (document in snapshot.documents) {
+                val post = document.toObject(Post::class.java) ?: continue
+                if (!isAfterCursor(post, cursorTime, after.id)) continue
+                result += post
+                if (result.size == limit) return result
+            }
+
+            if (snapshot.size() < requested) break
+            pageCursor = snapshot.documents.last()
         }
 
-        val snapshot = query.get().await()
-        return snapshot.toObjects(Post::class.java)
+        return result
+    }
+
+    private fun isAfterCursor(post: Post, cursorTime: Timestamp, cursorId: String): Boolean {
+        val createdAt = post.createdAt ?: return false
+        if (createdAt.seconds != cursorTime.seconds) {
+            return createdAt.seconds < cursorTime.seconds
+        }
+        if (createdAt.nanoseconds != cursorTime.nanoseconds) {
+            return createdAt.nanoseconds < cursorTime.nanoseconds
+        }
+        return post.id > cursorId
+    }
+
+    /** Runs a page query, logging failures (missing index, permissions) before rethrowing. */
+    private suspend fun runQuery(query: Query, context: String): List<Post> {
+        return runQuerySnapshot(query, context).toObjects(Post::class.java)
+    }
+
+    private suspend fun runQuerySnapshot(query: Query, context: String): QuerySnapshot {
+        return try {
+            query.get().await()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // A missing composite index fails here (FAILED_PRECONDITION). Log it so
+            // the console URL is visible instead of only the generic snackbar copy.
+            Log.w(TAG, "$context query failed", e)
+            throw e
+        }
     }
 
     override suspend fun userPosts(uid: String): List<Post> {
@@ -211,6 +290,11 @@ class FirebasePostRepository(
 
     private companion object {
         const val MAX_BATCH_WRITES = 500
+
+        /** A Firestore `in` query accepts at most 30 values (A-08). */
+        const val MAX_IN_VALUES = 30
+
+        const val TAG = "FirebasePostRepository"
     }
 }
 

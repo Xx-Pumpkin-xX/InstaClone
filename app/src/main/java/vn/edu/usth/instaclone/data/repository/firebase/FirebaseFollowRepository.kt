@@ -3,6 +3,7 @@ package vn.edu.usth.instaclone.data.repository.firebase
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
 import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.firestore
 import kotlinx.coroutines.tasks.await
 import vn.edu.usth.instaclone.data.repository.FollowRepository
@@ -122,11 +123,19 @@ class FirebaseFollowRepository : FollowRepository {
         }.await()
     }
 
+    /**
+     * The accounts the signed-in member follows, most recently followed first.
+     *
+     * A Firestore `in` query accepts at most 30 values (A-08), so callers that
+     * need a query filter take the first 30 entries. Ordering by `createdAt`
+     * makes that selection deterministic: the newest 30 follows win.
+     */
     override suspend fun followingIds(): List<String> {
         val me = auth.currentUser?.uid ?: return emptyList()
 
         return users.document(me)
             .collection("following")
+            .orderBy("createdAt", Query.Direction.DESCENDING)
             .limit(MAX_FOLLOWING_IDS)
             .get()
             .await()
