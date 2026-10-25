@@ -90,21 +90,20 @@ class FakePostRepository(
     }
 
     /**
-     * Newest first, with ties broken by document ID ascending, matching
-     * Firestore's ordering of equal field values.
+     * Newest first, with ties broken by document ID descending, matching
+     * Firestore's implicit ordering (it follows the last explicit orderBy).
      */
     private fun sortedPosts(): List<Post> = posts.sortedWith(
         compareByDescending<Post> { it.createdAt?.seconds ?: Long.MIN_VALUE }
             .thenByDescending { it.createdAt?.nanoseconds ?: 0 }
-            .thenBy { it.id }
+            .thenByDescending { it.id }
     )
 
     /**
      * Exclusive cursor pagination, mirroring [FirebasePostRepository]:
-     * the cursor is the pair `(createdAt, documentId)` with `createdAt`
-     * descending and document ID ascending. A deleted cursor therefore
-     * resumes exactly after its position instead of skipping same-timestamp
-     * posts.
+     * the cursor is the pair `(createdAt, documentId)` with both ordered
+     * descending. A deleted cursor therefore resumes exactly after its
+     * position instead of skipping same-timestamp posts.
      */
     private fun page(all: List<Post>, after: Post?, limit: Int): List<Post> {
         if (limit <= 0) return emptyList()
@@ -122,7 +121,7 @@ class FakePostRepository(
         if (createdAt.nanoseconds != cursorCreatedAt.nanoseconds) {
             return createdAt.nanoseconds < cursorCreatedAt.nanoseconds
         }
-        return post.id > cursorId
+        return post.id < cursorId
     }
 
     override suspend fun userPosts(uid: String): List<Post> {
