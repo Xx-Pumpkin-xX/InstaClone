@@ -782,3 +782,39 @@ describe('Cleanup marker reuse regression', () => {
     await assertSucceeds(createPost(bob, 'bob', id));
   });
 });
+
+describe('Following feed reads (FR-08)', () => {
+  it('lets a member read the followed IDs and their posts', async () => {
+    await seedProfiles('alice', 'bob');
+    const alice = env.authenticatedContext('alice').firestore();
+    const bob = env.authenticatedContext('bob').firestore();
+    await assertSucceeds(createPost(alice, 'alice', 'post-a'));
+    await assertSucceeds(follow(bob, 'bob', 'alice'));
+
+    const following = await getDocs(query(
+      collection(bob, 'users', 'bob', 'following'),
+      orderBy('createdAt', 'desc'),
+      limit(30)
+    ));
+    const followedIds = following.docs.map(document => document.id);
+    assert.deepEqual(followedIds, ['alice']);
+
+    // Same query shape as FirebasePostRepository.followingFeedPage(). The
+    // emulator does not enforce composite indexes, so this checks rules only.
+    const page = await getDocs(query(
+      collection(bob, 'posts'),
+      where('authorId', 'in', followedIds),
+      orderBy('createdAt', 'desc'),
+      limit(10)
+    ));
+    assert.deepEqual(page.docs.map(document => document.id), ['post-a']);
+  });
+
+  it('denies guests reading the feed', async () => {
+    await seedProfiles('alice');
+    await createPost(env.authenticatedContext('alice').firestore(), 'alice', 'post-a');
+    const guest = env.unauthenticatedContext().firestore();
+
+    await assertFails(getDocs(collection(guest, 'posts')));
+  });
+});
