@@ -11,67 +11,63 @@ import vn.edu.usth.instaclone.data.model.Post
 import vn.edu.usth.instaclone.data.repository.CommentRepository
 import vn.edu.usth.instaclone.data.repository.PostRepository
 
-
 class PostDetailViewModel(
     private val postRepo: PostRepository = AppContainer.postRepository,
     private val commentRepo: CommentRepository = AppContainer.commentRepository,
-): ViewModel(){
-    // Bai dang xem ( null = chua tai xong hoac ko tim thay)
-    private val _post=MutableStateFlow<Post?>(null)
+) : ViewModel() {
+
+    // The post being viewed (null = not loaded yet or not found)
+    private val _post = MutableStateFlow<Post?>(null)
     val post: StateFlow<Post?> = _post
 
-    // Danh sách bình luận
+    // true = loaded, but the post no longer exists
+    private val _postMissing = MutableStateFlow(false)
+    val postMissing: StateFlow<Boolean> = _postMissing
+
+    // Comments currently shown (oldest first)
     private val _comments = MutableStateFlow<List<Comment>>(emptyList())
     val comments: StateFlow<List<Comment>> = _comments
 
-    // MỚI: true = còn bình luận chưa hiện, có thể tải thêm
     private val _hasMore = MutableStateFlow(false)
     val hasMore: StateFlow<Boolean> = _hasMore
-    // Thông báo lỗi (null = không có lỗi)
+
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage
 
-    // MỚI: toàn bộ bình luận của bài (trong "kho")
     private var allComments: List<Comment> = emptyList()
-    // MỚI: đang cho hiện bao nhiêu bình luận
     private var shown = PAGE_SIZE
+    private var postId: String = ""
 
-    // MỚI: cắt allComments lấy phần đầu để hiện ra màn hình
     private fun publish() {
-        _comments.value = allComments.take(shown)      // chỉ lấy `shown` cái đầu
-        _hasMore.value = allComments.size > shown      // còn dư thì còn tải thêm được
+        _comments.value = allComments.take(shown)
+        _hasMore.value = allComments.size > shown
     }
 
-    // MỚI: màn hình gọi khi kéo gần cuối
     fun loadMoreComments() {
-        if (!_hasMore.value) return    // hết rồi thì thôi
-        shown += PAGE_SIZE             // hiện thêm 5
+        if (!_hasMore.value) return
+        shown += PAGE_SIZE
         publish()
     }
 
-    private var postId: String = ""
-
-    // Màn hình gọi hàm này khi mở, truyền id bài cần xem
     fun load(id: String) {
-        if (id == postId) return        // đã tải THÀNH CÔNG bài này rồi thì bỏ qua
+        if (id == postId) return        // already loaded successfully
         viewModelScope.launch {
             try {
                 val loadedPost = postRepo.getPost(id)
                 val loadedComments = commentRepo.comments(id)
-                // Cả hai đều thành công mới cập nhật
                 postId = id
                 _post.value = loadedPost
+                _postMissing.value = loadedPost == null
                 allComments = loadedComments
                 shown = PAGE_SIZE
                 publish()
             } catch (e: Exception) {
-                _errorMessage.value = "Không tải được bài viết"
+                _errorMessage.value = "Couldn't load the post"
             }
         }
     }
 
-    // Gửi bình luận; báo kết quả qua onResult (true = thành công, false = thất bại)
-    // Gửi bình luận; báo kết quả qua onResult (true = thành công, false = thất bại)
+    // onResult: true = success, false = failure
     fun sendComment(text: String, onResult: (Boolean) -> Unit = {}) {
         val content = text.trim()
         if (content.isEmpty() || content.length > MAX_COMMENT_LENGTH || postId.isEmpty()) {
@@ -82,18 +78,18 @@ class PostDetailViewModel(
             try {
                 commentRepo.addComment(postId, content)
                 allComments = commentRepo.comments(postId)
-                // The new comment is last in ascending order; reveal it even if older pages were hidden.
+                // New comment is last (oldest first); reveal it even if older pages are hidden
                 shown = allComments.size
                 publish()
                 onResult(true)
             } catch (e: Exception) {
-                _errorMessage.value = "Không gửi được bình luận"
+                _errorMessage.value = "Couldn't post your comment. Retry"
                 onResult(false)
             }
         }
     }
 
-    //(T-21): xóa bình luận của mình rồi tải lại danh sách
+    // T-21: delete own comment, then reload
     fun deleteComment(commentId: String) {
         if (postId.isEmpty()) return
         viewModelScope.launch {
@@ -106,11 +102,11 @@ class PostDetailViewModel(
             }
         }
     }
+
     fun clearError() {
         _errorMessage.value = null
     }
 
-    // MỚI: hằng số, mỗi lần hiện 5 bình luận
     companion object {
         private const val PAGE_SIZE = 5
         const val MAX_COMMENT_LENGTH = 500
