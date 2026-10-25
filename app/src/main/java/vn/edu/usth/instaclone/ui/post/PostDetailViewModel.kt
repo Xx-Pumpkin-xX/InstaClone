@@ -71,28 +71,43 @@ class PostDetailViewModel(
         }
     }
 
-    // onResult: true = success, false = failure
+    // onResult: true = the comment was saved, false = it was NOT saved
     fun sendComment(text: String, onResult: (Boolean) -> Unit = {}) {
         val content = text.trim()
-        // MỚI: _isSending.value in the condition ignores taps while one is pending
         if (_isSending.value || content.isEmpty() || content.length > MAX_COMMENT_LENGTH || postId.isEmpty()) {
             onResult(false)
             return
         }
-        _isSending.value = true          // MỚI
+        _isSending.value = true
         viewModelScope.launch {
             try {
-                commentRepo.addComment(postId, content)
-                allComments = commentRepo.comments(postId)
-                // New comment is last (oldest first); reveal it even if older pages are hidden
-                shown = allComments.size
-                publish()
+                // Step 1: save the comment. Only a failure here means "not posted".
+                val saved = try {
+                    commentRepo.addComment(postId, content)
+                    true
+                } catch (e: Exception) {
+                    _errorMessage.value = "Couldn't post your comment. Retry"
+                    false
+                }
+                if (!saved) {
+                    onResult(false)
+                    return@launch
+                }
+
+                // The comment is saved, so report success and clear the input.
                 onResult(true)
-            } catch (e: Exception) {
-                _errorMessage.value = "Couldn't post your comment. Retry"
-                onResult(false)
+
+                // Step 2: reload the list. A failure here must NOT ask the user to resend.
+                try {
+                    allComments = commentRepo.comments(postId)
+                    // New comment is last (oldest first); reveal it even if older pages are hidden
+                    shown = allComments.size
+                    publish()
+                } catch (e: Exception) {
+                    _errorMessage.value = "Comment posted, but couldn't refresh the list"
+                }
             } finally {
-                _isSending.value = false  // MỚI
+                _isSending.value = false
             }
         }
     }

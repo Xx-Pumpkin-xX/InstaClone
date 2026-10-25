@@ -94,11 +94,7 @@ fun PostDetailScreen(
             if (isOnline) {
                 viewModel.sendComment(text, onResult)
             } else {
-                Toast.makeText(
-                    context,
-                    "No connection. Check your network and try again.",
-                    Toast.LENGTH_SHORT
-                ).show()
+                Toast.makeText(context, "Couldn't post your comment. Retry", Toast.LENGTH_SHORT).show()
                 onResult(false)
             }
         },
