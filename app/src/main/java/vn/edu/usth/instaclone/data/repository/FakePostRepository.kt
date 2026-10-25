@@ -10,6 +10,8 @@ class FakePostRepository(
     private val myId: () -> String = {
         AppContainer.authRepository.currentUserId.value ?: "me"
     },
+    /** Followed account IDs, newest follow first, as in [FollowRepository.followingIds]. */
+    private val followedIds: suspend () -> List<String> = { emptyList() },
 ) : PostRepository {
     private val posts = mutableListOf<Post>()
     private var seededMyPosts = false
@@ -63,28 +65,63 @@ class FakePostRepository(
                 )
             )
         }
-        // ... (vòng for (i in 2..30) { ... } ở trên)
-
-        // Xáo một lần khi tạo kho, để thứ tự bài ổn định trong suốt phiên chạy
-        posts.shuffle()
-    }   // <- dấu } đóng init nằm ở ĐÂY, trước shuffleFeed
-
-    // Xáo lại thứ tự bài (chỉ gọi khi người dùng chủ động kéo để làm mới)
-    fun shuffleFeed() {
-        posts.shuffle()
     }
 
     override suspend fun feedPage(after: Post?, limit: Int): List<Post> {
         ensureMyPosts()
         delay(if (after == null) 300 else 1500)
-        val start = if (after == null) 0 else posts.indexOfFirst { it.id == after.id } + 1
-        return posts.drop(start).take(limit)
+        return page(sortedPosts(), after, limit)
     }
 
     override suspend fun followingFeedPage(after: Post?, limit: Int): List<Post> {
         ensureMyPosts()
         delay(300)
-        return posts.take(limit)
+        if (limit <= 0) return emptyList()
+
+        val me = myId()
+        val followed = followedIds()
+            .filter { it != me }
+            .take(MAX_FOLLOWED)
+            .toSet()
+        if (followed.isEmpty()) return emptyList()
+
+        val byFollowedAuthors = sortedPosts().filter { it.authorId in followed }
+        return page(byFollowedAuthors, after, limit)
+    }
+
+    /**
+     * Newest first, with ties broken by document ID descending, matching
+     * Firestore's implicit ordering (it follows the last explicit orderBy).
+     */
+    private fun sortedPosts(): List<Post> = posts.sortedWith(
+        compareByDescending<Post> { it.createdAt?.seconds ?: Long.MIN_VALUE }
+            .thenByDescending { it.createdAt?.nanoseconds ?: 0 }
+            .thenByDescending { it.id }
+    )
+
+    /**
+     * Exclusive cursor pagination, mirroring [FirebasePostRepository]:
+     * the cursor is the pair `(createdAt, documentId)` with both ordered
+     * descending. A deleted cursor therefore resumes exactly after its
+     * position instead of skipping same-timestamp posts.
+     */
+    private fun page(all: List<Post>, after: Post?, limit: Int): List<Post> {
+        if (limit <= 0) return emptyList()
+        if (after == null) return all.take(limit)
+
+        val cursorCreatedAt = after.createdAt ?: return emptyList()
+        return all.filter { isAfterCursor(it, cursorCreatedAt, after.id) }.take(limit)
+    }
+
+    private fun isAfterCursor(post: Post, cursorCreatedAt: Timestamp, cursorId: String): Boolean {
+        val createdAt = post.createdAt ?: return false
+        if (createdAt.seconds != cursorCreatedAt.seconds) {
+            return createdAt.seconds < cursorCreatedAt.seconds
+        }
+        if (createdAt.nanoseconds != cursorCreatedAt.nanoseconds) {
+            return createdAt.nanoseconds < cursorCreatedAt.nanoseconds
+        }
+        return post.id < cursorId
     }
 
     override suspend fun userPosts(uid: String): List<Post> {
@@ -179,6 +216,11 @@ class FakePostRepository(
                 )
             )
         }
+    }
+
+    private companion object {
+        /** A Firestore `in` query accepts at most 30 values (A-08). */
+        const val MAX_FOLLOWED = 30
     }
 
 }

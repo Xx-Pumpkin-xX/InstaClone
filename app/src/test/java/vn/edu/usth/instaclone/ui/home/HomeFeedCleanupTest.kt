@@ -41,6 +41,7 @@ class HomeFeedCleanupTest {
     @Test fun pendingCleanupDoesNotBlockFeedOrStartDuplicateJobs() = runTest(dispatcher) {
         val repo = CleanupRepository()
         val vm = model(repo)
+        vm.refresh()
         runCurrent()
         assertEquals(listOf("post"), vm.posts.value.map { it.id })
         assertFalse(vm.isRefreshing.value)
@@ -57,6 +58,7 @@ class HomeFeedCleanupTest {
     @Test fun timeoutLeavesFeedUsableAndAllowsNextRefreshToRetry() = runTest(dispatcher) {
         val repo = CleanupRepository()
         val vm = model(repo)
+        vm.refresh()
         runCurrent()
         advanceTimeBy(10_000)
         runCurrent()
@@ -77,6 +79,7 @@ class HomeFeedCleanupTest {
             gate.complete(Unit)
         }
         val vm = model(repo)
+        vm.refresh()
         advanceUntilIdle()
         assertEquals("post", vm.posts.value.single().id)
         assertEquals("deleted", vm.cleanupRetryPostId.value)

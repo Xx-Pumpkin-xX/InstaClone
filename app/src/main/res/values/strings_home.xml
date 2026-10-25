@@ -1,6 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="home_no_internet">You\'re offline</string>
+    <string name="home_offline">Offline</string>
+    <string name="home_offline_empty">You\'re offline</string>
+    <string name="home_empty_all">No posts yet</string>
+    <string name="home_empty_following">Follow people to see their posts here</string>
+    <string name="home_tab_all">All</string>
+    <string name="home_tab_following">Following</string>
+    <string name="home_load_failed">Couldn\'t load feed</string>
+    <string name="home_try_again">Try again</string>
+    <string name="home_post_photo">Post photo</string>
     <string name="home_avatar">Avatar of %1$s</string>
     <string name="home_like">Like</string>
     <string name="home_comments">%1$d comments</string>
