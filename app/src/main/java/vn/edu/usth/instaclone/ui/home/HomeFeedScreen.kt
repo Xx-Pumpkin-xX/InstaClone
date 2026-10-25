@@ -59,6 +59,7 @@ import coil.compose.AsyncImage
 import vn.edu.usth.instaclone.R
 import vn.edu.usth.instaclone.data.AppContainer
 import vn.edu.usth.instaclone.data.model.Post
+import vn.edu.usth.instaclone.ui.common.timeAgo
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -294,7 +295,7 @@ fun PostItem(
             }
         }
 
-        // Like & Comment counts
+        // Like & Comment counts (never shown below 0)
         Row(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -306,9 +307,9 @@ fun PostItem(
                     tint = if (isLiked) MaterialTheme.colorScheme.error else Color.Unspecified
                 )
             }
-            Text(text = "${post.likeCount}")
+            Text(text = "${post.likeCount.coerceAtLeast(0L)}")
             Spacer(modifier = Modifier.width(16.dp))
-            Text(text = stringResource(R.string.home_comments, post.commentCount))
+            Text(text = stringResource(R.string.home_comments, post.commentCount.coerceAtLeast(0L)))
         }
 
         // Caption
@@ -319,6 +320,14 @@ fun PostItem(
                 style = MaterialTheme.typography.bodyMedium
             )
         }
+
+        // Time since posting (FR-07)
+        Text(
+            text = timeAgo(post.createdAt),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+        )
     }
 
     // T-14: Delete Confirmation Dialog
