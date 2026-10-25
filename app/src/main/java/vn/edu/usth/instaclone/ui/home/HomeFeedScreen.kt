@@ -78,6 +78,7 @@ fun HomeFeedScreen(
     val isOnline by remember { observeOnline(context) }.collectAsState(initial = true)
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val retryCleanupLabel = stringResource(R.string.home_retry_cleanup)
 
     val currentUserId by AppContainer.authRepository.currentUserId.collectAsState()
 
@@ -91,9 +92,7 @@ fun HomeFeedScreen(
         errorMessage?.let { message ->
             val result = snackbarHostState.showSnackbar(
                 message = message,
-                actionLabel = cleanupRetryPostId?.let {
-                    context.getString(R.string.home_retry_cleanup)
-                },
+                actionLabel = cleanupRetryPostId?.let { retryCleanupLabel },
                 withDismissAction = cleanupRetryPostId != null,
             )
             if (result == SnackbarResult.ActionPerformed) {
