@@ -34,6 +34,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -52,6 +54,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -68,21 +72,33 @@ fun HomeFeedScreen(
     viewModel: HomeFeedViewModel = viewModel(),
 ) {
     val posts by viewModel.posts.collectAsState()
+    val mode by viewModel.mode.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val isLoadingMore by viewModel.isLoadingMore.collectAsState()
+    val hasLoaded by viewModel.hasLoaded.collectAsState()
+    val loadFailed by viewModel.loadFailed.collectAsState()
     val likedPostIds by viewModel.likedPostIds.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
     val cleanupRetryPostId by viewModel.cleanupRetryPostId.collectAsState()
     val context = LocalContext.current
+    val retryCleanupLabel = stringResource(R.string.home_retry_cleanup)
     val isOnline by remember { observeOnline(context) }.collectAsState(initial = true)
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
 
     val currentUserId by AppContainer.authRepository.currentUserId.collectAsState()
 
-    // Auto-refresh feed whenever this screen becomes visible (e.g. after uploading a post)
+    // Auto-refresh the selected mode whenever this screen becomes visible
+    // (e.g. after uploading a post, following someone, or returning from a detail).
     LaunchedEffect(Unit) {
         viewModel.refresh()
+    }
+
+    // Each mode starts at the top of its own list (UC-05 1b).
+    LaunchedEffect(mode) {
+        if (listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0) {
+            listState.scrollToItem(0)
+        }
     }
 
     // Show error snackbar if any operation fails
@@ -90,9 +106,7 @@ fun HomeFeedScreen(
         errorMessage?.let { message ->
             val result = snackbarHostState.showSnackbar(
                 message = message,
-                actionLabel = cleanupRetryPostId?.let {
-                    context.getString(R.string.home_retry_cleanup)
-                },
+                actionLabel = if (cleanupRetryPostId != null) retryCleanupLabel else null,
                 withDismissAction = cleanupRetryPostId != null,
             )
             if (result == SnackbarResult.ActionPerformed) {
@@ -105,8 +119,9 @@ fun HomeFeedScreen(
 
     val nearEnd by remember {
         derivedStateOf {
-            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-            lastVisible >= listState.layoutInfo.totalItemsCount - 3
+            val info = listState.layoutInfo
+            val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+            info.totalItemsCount > 0 && lastVisible >= info.totalItemsCount - 3
         }
     }
 
@@ -118,7 +133,7 @@ fun HomeFeedScreen(
         Column(modifier = Modifier.fillMaxSize()) {
             if (!isOnline) {
                 Text(
-                    text = stringResource(R.string.home_no_internet),
+                    text = stringResource(R.string.home_offline),
                     color = MaterialTheme.colorScheme.inverseOnSurface,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -127,27 +142,35 @@ fun HomeFeedScreen(
                 )
             }
 
+            FeedModeTabs(mode = mode, onModeSelected = viewModel::selectMode)
+
             PullToRefreshBox(
                 isRefreshing = isRefreshing,
                 onRefresh = { viewModel.pullToRefresh() },
                 modifier = Modifier.weight(1f)
             ) {
-                if (posts.isEmpty() && !isRefreshing) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "No posts yet",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                } else {
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier.fillMaxSize()
-                    ) {
+                // Always a LazyColumn, so pull-to-refresh also works while the
+                // list is empty (the common Following mode state).
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    if (posts.isEmpty()) {
+                        item {
+                            Box(
+                                modifier = Modifier.fillParentMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                FeedEmptyContent(
+                                    mode = mode,
+                                    isOnline = isOnline,
+                                    hasLoaded = hasLoaded,
+                                    loadFailed = loadFailed,
+                                    onRetry = viewModel::refresh,
+                                )
+                            }
+                        }
+                    } else {
                         items(posts, key = { it.id }) { post ->
                             val isOwnPost = currentUserId != null && post.authorId == currentUserId
                             PostItem(
@@ -183,6 +206,76 @@ fun HomeFeedScreen(
             modifier = Modifier.align(Alignment.BottomCenter)
         )
     }
+}
+
+/** The All / Following switch (FR-08). */
+@Composable
+fun FeedModeTabs(mode: FeedMode, onModeSelected: (FeedMode) -> Unit) {
+    PrimaryTabRow(selectedTabIndex = mode.ordinal) {
+        Tab(
+            selected = mode == FeedMode.ALL,
+            onClick = { onModeSelected(FeedMode.ALL) },
+            text = { Text(stringResource(R.string.home_tab_all)) },
+        )
+        Tab(
+            selected = mode == FeedMode.FOLLOWING,
+            onClick = { onModeSelected(FeedMode.FOLLOWING) },
+            text = { Text(stringResource(R.string.home_tab_following)) },
+        )
+    }
+}
+
+/**
+ * Empty / loading content for the feed. Precedence follows FR-08:
+ * loading, then offline, then a failed load, then the mode's empty message.
+ */
+@Composable
+fun FeedEmptyContent(
+    mode: FeedMode,
+    isOnline: Boolean,
+    hasLoaded: Boolean,
+    loadFailed: Boolean = false,
+    onRetry: () -> Unit = {},
+) {
+    if (!hasLoaded) {
+        CircularProgressIndicator()
+        return
+    }
+
+    if (!isOnline) {
+        Text(
+            text = stringResource(R.string.home_offline_empty),
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        return
+    }
+
+    if (loadFailed) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = stringResource(R.string.home_load_failed),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            TextButton(onClick = onRetry) {
+                Text(stringResource(R.string.home_try_again))
+            }
+        }
+        return
+    }
+
+    Text(
+        text = stringResource(
+            if (mode == FeedMode.FOLLOWING) {
+                R.string.home_empty_following
+            } else {
+                R.string.home_empty_all
+            }
+        ),
+        style = MaterialTheme.typography.bodyLarge,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
 }
 
 @Composable
@@ -276,18 +369,23 @@ fun PostItem(
 
         Spacer(modifier = Modifier.height(6.dp))
 
-        // Post Image rendered with Coil AsyncImage
+        // Post Image rendered with Coil AsyncImage; the grey surfaceVariant
+        // background doubles as the placeholder when the photo cannot load.
+        val postPhotoDescription = stringResource(R.string.home_post_photo)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f)
                 .background(MaterialTheme.colorScheme.surfaceVariant)
+                .semantics {
+                    if (post.imageUrl.isBlank()) contentDescription = postPhotoDescription
+                }
                 .clickable { onClick() }
         ) {
             if (post.imageUrl.isNotBlank()) {
                 AsyncImage(
                     model = post.imageUrl,
-                    contentDescription = "Post photo",
+                    contentDescription = postPhotoDescription,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
                 )
