@@ -31,6 +31,10 @@ class PostDetailViewModel(
     private val _hasMore = MutableStateFlow(false)
     val hasMore: StateFlow<Boolean> = _hasMore
 
+    // MỚI: true = a comment is being sent; blocks further sends
+    private val _isSending = MutableStateFlow(false)
+    val isSending: StateFlow<Boolean> = _isSending
+
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage
 
@@ -70,10 +74,12 @@ class PostDetailViewModel(
     // onResult: true = success, false = failure
     fun sendComment(text: String, onResult: (Boolean) -> Unit = {}) {
         val content = text.trim()
-        if (content.isEmpty() || content.length > MAX_COMMENT_LENGTH || postId.isEmpty()) {
+        // MỚI: _isSending.value in the condition ignores taps while one is pending
+        if (_isSending.value || content.isEmpty() || content.length > MAX_COMMENT_LENGTH || postId.isEmpty()) {
             onResult(false)
             return
         }
+        _isSending.value = true          // MỚI
         viewModelScope.launch {
             try {
                 commentRepo.addComment(postId, content)
@@ -85,6 +91,8 @@ class PostDetailViewModel(
             } catch (e: Exception) {
                 _errorMessage.value = "Couldn't post your comment. Retry"
                 onResult(false)
+            } finally {
+                _isSending.value = false  // MỚI
             }
         }
     }

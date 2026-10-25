@@ -52,6 +52,8 @@ import vn.edu.usth.instaclone.data.AppContainer
 import vn.edu.usth.instaclone.data.model.Comment
 import vn.edu.usth.instaclone.data.model.Post
 import vn.edu.usth.instaclone.ui.home.observeOnline
+import androidx.compose.material3.MaterialTheme
+import vn.edu.usth.instaclone.ui.common.timeAgo
 
 // SCREEN 1: connected to the ViewModel
 @Composable
@@ -64,6 +66,7 @@ fun PostDetailScreen(
     val postMissing by viewModel.postMissing.collectAsState()
     val comments by viewModel.comments.collectAsState()
     val hasMore by viewModel.hasMore.collectAsState()
+    val isSending by viewModel.isSending.collectAsState()   // MỚI
     val errorMessage by viewModel.errorMessage.collectAsState()
     val currentUserId by AppContainer.authRepository.currentUserId.collectAsState()
     val context = LocalContext.current
@@ -83,6 +86,7 @@ fun PostDetailScreen(
         post = post,
         comments = comments,
         postMissing = postMissing,
+        isSending = isSending,                               // MỚI
         hasMore = hasMore,
         onLoadMore = { viewModel.loadMoreComments() },
         currentUserId = currentUserId,
@@ -106,6 +110,7 @@ fun PostDetailContent(
     post: Post?,
     comments: List<Comment>,
     postMissing: Boolean = false,
+    isSending: Boolean = false,                              // MỚI
     hasMore: Boolean = false,
     onLoadMore: () -> Unit = {},
     currentUserId: String? = null,
@@ -217,7 +222,15 @@ fun PostDetailContent(
                             )
                             .padding(horizontal = 12.dp, vertical = 6.dp)
                     ) {
-                        Text(comment.authorUsername, fontWeight = FontWeight.Bold)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(comment.authorUsername, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                timeAgo(comment.createdAt),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                         Text(comment.text)
                     }
                 }
@@ -251,7 +264,7 @@ fun PostDetailContent(
                             }
                         }
                     },
-                    enabled = isValid && !postMissing,
+                    enabled = isValid && !postMissing && !isSending,   // MỚI: thêm !isSending
                 ) {
                     Text("Send")
                 }
