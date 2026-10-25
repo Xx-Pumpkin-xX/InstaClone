@@ -136,14 +136,29 @@ class FakePostRepositoryTest {
     fun cursorWithSameTimestamp_resumesAfterItsDocumentId() = runTest {
         val repo = repository()
         val newest = repo.feedPage(limit = 1).single()
-        // This cursor does not exist, but it sits just before `newest` at the
-        // same timestamp. Ordering by (createdAt, documentId) must still return
-        // `newest`; skipping the whole timestamp would leak/lose that post.
-        val ghost = Post(id = "0-ghost", createdAt = newest.createdAt)
+        // Firestore's implicit tie-breaker follows the last explicit orderBy,
+        // so equal timestamps are ordered by document ID descending. A cursor
+        // with a larger ID sits just before `newest`, and `newest` must still
+        // be returned; skipping the whole timestamp would lose that post.
+        val ghost = Post(id = "zzz-ghost", createdAt = newest.createdAt)
 
         val page = repo.feedPage(after = ghost, limit = 10)
 
         assertEquals(newest.id, page.first().id)
+    }
+
+    @Test
+    fun cursorWithSameTimestamp_skipsPostsOrderedBeforeIt() = runTest {
+        val repo = repository()
+        val newest = repo.feedPage(limit = 1).single()
+        // A smaller ID sorts after `newest` in descending order, so `newest`
+        // must not be returned again.
+        val ghost = Post(id = "0-ghost", createdAt = newest.createdAt)
+
+        val page = repo.feedPage(after = ghost, limit = 10)
+
+        assertTrue(page.isNotEmpty())
+        assertTrue(page.none { it.id == newest.id })
     }
 
     @Test
@@ -169,7 +184,10 @@ class FakePostRepositoryTest {
         posts.zipWithNext().all { (a, b) ->
             val left = a.createdAt ?: return@all false
             val right = b.createdAt ?: return@all false
-            left.seconds > right.seconds ||
-                (left.seconds == right.seconds && left.nanoseconds >= right.nanoseconds)
+            when {
+                left.seconds != right.seconds -> left.seconds > right.seconds
+                left.nanoseconds != right.nanoseconds -> left.nanoseconds > right.nanoseconds
+                else -> a.id > b.id
+            }
         }
 }
