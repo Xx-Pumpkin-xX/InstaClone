@@ -67,9 +67,11 @@ class FirebasePostRepository(
     }
 
     /**
-     * Returns the posts strictly after [after] in `(createdAt DESC, documentId ASC)`
+     * Returns the posts strictly after [after] in `(createdAt DESC, documentId DESC)`
      * order, without an explicit document-ID `orderBy`.
      *
+     * Firestore's implicit document-ID tie-breaker follows the last explicit
+     * orderBy, so equal timestamps come back in descending document-ID order.
      * `startAt(cursorTime)` is inclusive, so it includes every post sharing the
      * cursor's timestamp, even ones already shown. Posts at or before the cursor
      * position are filtered out using the document ID as the tie-breaker. The
@@ -120,7 +122,7 @@ class FirebasePostRepository(
         if (createdAt.nanoseconds != cursorTime.nanoseconds) {
             return createdAt.nanoseconds < cursorTime.nanoseconds
         }
-        return post.id > cursorId
+        return post.id < cursorId
     }
 
     /** Runs a page query, logging failures (missing index, permissions) before rethrowing. */
