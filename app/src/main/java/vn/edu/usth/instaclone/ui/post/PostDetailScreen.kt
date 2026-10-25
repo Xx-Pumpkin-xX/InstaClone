@@ -23,6 +23,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -51,9 +52,8 @@ import kotlinx.coroutines.flow.filter
 import vn.edu.usth.instaclone.data.AppContainer
 import vn.edu.usth.instaclone.data.model.Comment
 import vn.edu.usth.instaclone.data.model.Post
-import vn.edu.usth.instaclone.ui.home.observeOnline
-import androidx.compose.material3.MaterialTheme
 import vn.edu.usth.instaclone.ui.common.timeAgo
+import vn.edu.usth.instaclone.ui.home.observeOnline
 
 // SCREEN 1: connected to the ViewModel
 @Composable
@@ -66,12 +66,11 @@ fun PostDetailScreen(
     val postMissing by viewModel.postMissing.collectAsState()
     val comments by viewModel.comments.collectAsState()
     val hasMore by viewModel.hasMore.collectAsState()
-    val isSending by viewModel.isSending.collectAsState()   // MỚI
+    val isSending by viewModel.isSending.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
     val currentUserId by AppContainer.authRepository.currentUserId.collectAsState()
     val context = LocalContext.current
     val isOnline by remember { observeOnline(context) }.collectAsState(initial = true)
-
 
     LaunchedEffect(postId) { viewModel.load(postId) }
 
@@ -86,7 +85,7 @@ fun PostDetailScreen(
         post = post,
         comments = comments,
         postMissing = postMissing,
-        isSending = isSending,                               // MỚI
+        isSending = isSending,
         hasMore = hasMore,
         onLoadMore = { viewModel.loadMoreComments() },
         currentUserId = currentUserId,
@@ -95,7 +94,11 @@ fun PostDetailScreen(
             if (isOnline) {
                 viewModel.sendComment(text, onResult)
             } else {
-                Toast.makeText(context, "Couldn't post your comment. Retry", Toast.LENGTH_SHORT).show()
+                Toast.makeText(
+                    context,
+                    "No connection. Check your network and try again.",
+                    Toast.LENGTH_SHORT
+                ).show()
                 onResult(false)
             }
         },
@@ -110,7 +113,7 @@ fun PostDetailContent(
     post: Post?,
     comments: List<Comment>,
     postMissing: Boolean = false,
-    isSending: Boolean = false,                              // MỚI
+    isSending: Boolean = false,
     hasMore: Boolean = false,
     onLoadMore: () -> Unit = {},
     currentUserId: String? = null,
@@ -245,6 +248,7 @@ fun PostDetailContent(
                 OutlinedTextField(
                     value = text,
                     onValueChange = { text = it },
+                    enabled = !isSending && !postMissing,
                     modifier = Modifier.weight(1f),
                     placeholder = { Text("Add a comment...") },
                     isError = trimmedLength > PostDetailViewModel.MAX_COMMENT_LENGTH,
@@ -264,7 +268,7 @@ fun PostDetailContent(
                             }
                         }
                     },
-                    enabled = isValid && !postMissing && !isSending,   // MỚI: thêm !isSending
+                    enabled = isValid && !postMissing && !isSending,
                 ) {
                     Text("Send")
                 }
