@@ -29,7 +29,23 @@ interface PostRepository {
     suspend fun userPosts(uid: String): List<Post>
     suspend fun getPost(postId: String): Post?
     suspend fun createPost(imageUrl: String, imagePath: String, caption: String): String
+    suspend fun createPostWithId(
+        postId: String,
+        imageUrl: String,
+        imagePath: String,
+        caption: String
+    ): String = createPost(imageUrl, imagePath, caption)
     suspend fun deletePost(postId: String)
     suspend fun retryPendingPostCleanups() = Unit
 
+}
+
+class PostCreationException(
+    val commitOutcome: CommitOutcome,
+    cause: Throwable
+) : Exception("Post creation failed", cause) {
+    enum class CommitOutcome {
+        NOT_COMMITTED,
+        UNKNOWN
+    }
 }

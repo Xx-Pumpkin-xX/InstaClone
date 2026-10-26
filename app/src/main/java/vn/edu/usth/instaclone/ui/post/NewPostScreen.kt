@@ -73,6 +73,9 @@ fun NewPostScreen(
     val caption by viewModel.caption.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
     val showDiscardDialog by viewModel.showDiscardDialog.collectAsState()
+    val canEditDraft = uiState is NewPostUiState.Idle ||
+            (uiState as? NewPostUiState.Error)?.allowEditing == true
+    val canLeaveDraft = uiState is NewPostUiState.Idle || uiState is NewPostUiState.Error
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -116,7 +119,10 @@ fun NewPostScreen(
             TopAppBar(
                 title = { Text("New post", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
-                    IconButton(onClick = { viewModel.onBackPress(onNavigateBack) }) {
+                    IconButton(
+                        onClick = { viewModel.onBackPress(onNavigateBack) },
+                        enabled = canLeaveDraft
+                    ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back"
@@ -126,7 +132,7 @@ fun NewPostScreen(
                 actions = {
                     val isShareEnabled = selectedUri != null &&
                             caption.length <= 2200 &&
-                            (uiState is NewPostUiState.Idle || uiState is NewPostUiState.Error)
+                            canEditDraft
 
                     TextButton(
                         onClick = { viewModel.share(context) },
@@ -163,7 +169,7 @@ fun NewPostScreen(
                             .fillMaxWidth()
                             .aspectRatio(1f)
                             .clip(RoundedCornerShape(12.dp))
-                            .clickable {
+                            .clickable(enabled = canEditDraft) {
                                 photoPickerLauncher.launch(
                                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                                 )
@@ -203,7 +209,7 @@ fun NewPostScreen(
                             .fillMaxWidth()
                             .aspectRatio(1f)
                             .clip(RoundedCornerShape(12.dp))
-                            .clickable {
+                            .clickable(enabled = canEditDraft) {
                                 photoPickerLauncher.launch(
                                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                                 )
@@ -253,7 +259,7 @@ fun NewPostScreen(
                         .height(140.dp),
                     placeholder = { Text("Write a caption...") },
                     maxLines = 5,
-                    enabled = uiState is NewPostUiState.Idle || uiState is NewPostUiState.Error,
+                    enabled = canEditDraft,
                     shape = RoundedCornerShape(8.dp)
                 )
 
@@ -313,20 +319,35 @@ fun NewPostScreen(
 
     // Discard Draft Dialog
     if (showDiscardDialog) {
+        val saveOutcomeIsUnknown =
+            (uiState as? NewPostUiState.Error)?.allowEditing == false
         AlertDialog(
             onDismissRequest = { viewModel.dismissDiscardDialog() },
-            title = { Text("Discard this post?") },
-            text = { Text("If you leave now, your photo and caption will be lost.") },
+            title = { Text(if (saveOutcomeIsUnknown) "Leave this post?" else "Discard this post?") },
+            text = {
+                Text(
+                    if (saveOutcomeIsUnknown) {
+                        "The post may already have been shared. Leaving will not delete its photo."
+                    } else {
+                        "If you leave now, your photo and caption will be lost."
+                    }
+                )
+            },
             confirmButton = {
                 TextButton(
-                    onClick = { viewModel.confirmDiscard(onNavigateBack) }
+                    onClick = { viewModel.confirmDiscard(onNavigateBack) },
+                    enabled = canLeaveDraft
                 ) {
-                    Text("Discard", color = MaterialTheme.colorScheme.error)
+                    Text(
+                        if (saveOutcomeIsUnknown) "Leave" else "Discard",
+                        color = MaterialTheme.colorScheme.error
+                    )
                 }
             },
             dismissButton = {
                 TextButton(
-                    onClick = { viewModel.dismissDiscardDialog() }
+                    onClick = { viewModel.dismissDiscardDialog() },
+                    enabled = canLeaveDraft
                 ) {
                     Text("Cancel")
                 }
