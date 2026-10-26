@@ -232,7 +232,33 @@ class FirebasePostRepository(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            val outcome = if (e.isDefinitePostRejection()) {
+            var postLookupSucceeded = false
+            val existingPost = try {
+                postRef.get().await().also { postLookupSucceeded = true }
+            } catch (verificationError: CancellationException) {
+                throw verificationError
+            } catch (verificationError: Exception) {
+                e.addSuppressed(verificationError)
+                null
+            }
+            if (existingPost?.exists() == true) {
+                val matchesSubmission =
+                    existingPost.getString("authorId") == currentUser.uid &&
+                        existingPost.getString("imagePath") == imagePath &&
+                        existingPost.getString("imageUrl") == imageUrl &&
+                        existingPost.getString("caption") == caption
+                if (matchesSubmission) return postId
+
+                e.addSuppressed(
+                    IllegalStateException("An existing post with this ID has different content")
+                )
+            }
+
+            val outcome = if (
+                postLookupSucceeded &&
+                existingPost?.exists() != true &&
+                e.isDefinitePostRejection()
+            ) {
                 PostCreationException.CommitOutcome.NOT_COMMITTED
             } else {
                 PostCreationException.CommitOutcome.UNKNOWN
