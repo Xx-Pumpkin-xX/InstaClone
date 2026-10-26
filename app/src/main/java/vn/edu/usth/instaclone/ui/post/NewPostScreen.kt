@@ -73,6 +73,9 @@ fun NewPostScreen(
     val caption by viewModel.caption.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
     val showDiscardDialog by viewModel.showDiscardDialog.collectAsState()
+    val canShareDraft = uiState is NewPostUiState.Idle || uiState is NewPostUiState.Error
+    val canEditDraft = uiState is NewPostUiState.Idle ||
+            (uiState as? NewPostUiState.Error)?.allowEditing == true
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -116,7 +119,10 @@ fun NewPostScreen(
             TopAppBar(
                 title = { Text("New post", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
-                    IconButton(onClick = { viewModel.onBackPress(onNavigateBack) }) {
+                    IconButton(
+                        onClick = { viewModel.onBackPress(onNavigateBack) },
+                        enabled = canEditDraft
+                    ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back"
@@ -126,7 +132,7 @@ fun NewPostScreen(
                 actions = {
                     val isShareEnabled = selectedUri != null &&
                             caption.length <= 2200 &&
-                            (uiState is NewPostUiState.Idle || uiState is NewPostUiState.Error)
+                            canShareDraft
 
                     TextButton(
                         onClick = { viewModel.share(context) },
@@ -163,7 +169,7 @@ fun NewPostScreen(
                             .fillMaxWidth()
                             .aspectRatio(1f)
                             .clip(RoundedCornerShape(12.dp))
-                            .clickable {
+                            .clickable(enabled = canEditDraft) {
                                 photoPickerLauncher.launch(
                                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                                 )
@@ -203,7 +209,7 @@ fun NewPostScreen(
                             .fillMaxWidth()
                             .aspectRatio(1f)
                             .clip(RoundedCornerShape(12.dp))
-                            .clickable {
+                            .clickable(enabled = canEditDraft) {
                                 photoPickerLauncher.launch(
                                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                                 )
@@ -253,7 +259,7 @@ fun NewPostScreen(
                         .height(140.dp),
                     placeholder = { Text("Write a caption...") },
                     maxLines = 5,
-                    enabled = uiState is NewPostUiState.Idle || uiState is NewPostUiState.Error,
+                    enabled = canEditDraft,
                     shape = RoundedCornerShape(8.dp)
                 )
 
@@ -314,19 +320,23 @@ fun NewPostScreen(
     // Discard Draft Dialog
     if (showDiscardDialog) {
         AlertDialog(
-            onDismissRequest = { viewModel.dismissDiscardDialog() },
+            onDismissRequest = {
+                if (canEditDraft) viewModel.dismissDiscardDialog()
+            },
             title = { Text("Discard this post?") },
             text = { Text("If you leave now, your photo and caption will be lost.") },
             confirmButton = {
                 TextButton(
-                    onClick = { viewModel.confirmDiscard(onNavigateBack) }
+                    onClick = { viewModel.confirmDiscard(onNavigateBack) },
+                    enabled = canEditDraft
                 ) {
                     Text("Discard", color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
                 TextButton(
-                    onClick = { viewModel.dismissDiscardDialog() }
+                    onClick = { viewModel.dismissDiscardDialog() },
+                    enabled = canEditDraft
                 ) {
                     Text("Cancel")
                 }

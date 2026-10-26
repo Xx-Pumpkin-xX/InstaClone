@@ -140,6 +140,16 @@ class FakePostRepository(
     override suspend fun createPost(imageUrl: String, imagePath: String, caption: String): String {
         delay(500) // simulate network request
         val me = myId()
+        val existingPost = posts.find { it.imagePath == imagePath }
+        if (existingPost != null) {
+            check(
+                existingPost.authorId == me &&
+                    existingPost.imageUrl == imageUrl &&
+                    existingPost.caption == caption
+            ) { "Post submission has already been used with different content" }
+            return existingPost.id
+        }
+
         val newPostId = "post-${UUID.randomUUID().toString().take(8)}"
         val newPost = Post(
             id = newPostId,

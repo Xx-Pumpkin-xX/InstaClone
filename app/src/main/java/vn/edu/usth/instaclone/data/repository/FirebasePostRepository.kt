@@ -14,6 +14,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
 import vn.edu.usth.instaclone.data.model.Post
+import java.util.UUID
 
 class FirebasePostRepository(
     private val imageStorage: ImageStorage,
@@ -160,40 +161,58 @@ class FirebasePostRepository(
     override suspend fun createPost(imageUrl: String, imagePath: String, caption: String): String {
         val currentUser = auth.currentUser
             ?: throw IllegalStateException("Must be signed in to create a post")
+        require(
+            imagePath.matches(
+                Regex("^images/posts/${Regex.escape(currentUser.uid)}/[A-Za-z0-9_-]+\\.(jpg|png)$")
+            )
+        ) { "Post image path does not belong to its author" }
 
-        val userDoc = db.collection("users").document(currentUser.uid).get().await()
-        check(userDoc.exists()) { "Member profile not found" }
-        val authorUsername = userDoc.getString("username")
-            ?: throw IllegalStateException("Member username not found")
-        val authorAvatarUrl = userDoc.getString("avatarUrl") ?: ""
-
-        val postRef = db.collection("posts").document()
+        // Reusing the upload path on retry keeps the Firestore write idempotent.
+        val postId = UUID.nameUUIDFromBytes(
+            "${currentUser.uid}:$imagePath".toByteArray(Charsets.UTF_8)
+        ).toString()
+        val postRef = db.collection("posts").document(postId)
         val userRef = db.collection("users").document(currentUser.uid)
 
-        val postData = hashMapOf(
-            "authorId" to currentUser.uid,
-            "authorUsername" to authorUsername,
-            "authorAvatarUrl" to authorAvatarUrl,
-            "imageUrl" to imageUrl,
-            "imagePath" to imagePath,
-            "caption" to caption,
-            "likeCount" to 0L,
-            "commentCount" to 0L,
-            "createdAt" to FieldValue.serverTimestamp()
-        )
+        return db.runTransaction { transaction ->
+            val existingPost = transaction.get(postRef)
+            if (existingPost.exists()) {
+                check(
+                    existingPost.getString("authorId") == currentUser.uid &&
+                        existingPost.getString("imagePath") == imagePath &&
+                        existingPost.getString("imageUrl") == imageUrl &&
+                        existingPost.getString("caption") == caption
+                ) { "Post submission has already been used with different content" }
+                return@runTransaction postRef.id
+            }
 
-        val batch = db.batch()
-        batch.set(postRef, postData)
-        batch.update(
-            userRef,
-            mapOf(
-                "postCount" to FieldValue.increment(1),
-                "counterMutation" to mapOf("kind" to "post", "id" to postRef.id),
-            ),
-        )
-        batch.commit().await()
+            val userDoc = transaction.get(userRef)
+            check(userDoc.exists()) { "Member profile not found" }
+            val authorUsername = userDoc.getString("username")
+                ?: throw IllegalStateException("Member username not found")
+            val authorAvatarUrl = userDoc.getString("avatarUrl") ?: ""
+            val postData = hashMapOf(
+                "authorId" to currentUser.uid,
+                "authorUsername" to authorUsername,
+                "authorAvatarUrl" to authorAvatarUrl,
+                "imageUrl" to imageUrl,
+                "imagePath" to imagePath,
+                "caption" to caption,
+                "likeCount" to 0L,
+                "commentCount" to 0L,
+                "createdAt" to FieldValue.serverTimestamp()
+            )
 
-        return postRef.id
+            transaction.set(postRef, postData)
+            transaction.update(
+                userRef,
+                mapOf(
+                    "postCount" to FieldValue.increment(1),
+                    "counterMutation" to mapOf("kind" to "post", "id" to postRef.id),
+                ),
+            )
+            postRef.id
+        }.await()
     }
 
     override suspend fun deletePost(postId: String) =
