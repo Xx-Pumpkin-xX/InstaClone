@@ -2,6 +2,7 @@ package vn.edu.usth.instaclone.ui.post
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -18,6 +19,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import vn.edu.usth.instaclone.data.AppContainer
 import vn.edu.usth.instaclone.data.repository.ImageStorage
+import vn.edu.usth.instaclone.data.repository.PostCreationException
 import vn.edu.usth.instaclone.data.repository.PostRepository
 import vn.edu.usth.instaclone.util.ImageCompressor
 import java.util.UUID
@@ -28,7 +30,10 @@ sealed interface NewPostUiState {
     data class Uploading(val message: String = "Uploading photo...") : NewPostUiState
     data class Saving(val message: String = "Saving post...") : NewPostUiState
     object Success : NewPostUiState
-    data class Error(val message: String, val allowEditing: Boolean = true) : NewPostUiState
+    data class Error(
+        val message: String,
+        val allowEditing: Boolean = true
+    ) : NewPostUiState
 }
 
 class NewPostViewModel(
@@ -95,10 +100,10 @@ class NewPostViewModel(
                     return@launch
                 }
                 val storagePath = "images/posts/$uid/$postId.jpg"
-
                 val cachedUpload = pendingUpload?.takeIf {
                     it.postId == postId && it.uid == uid
                 }
+
                 val uploadedUrl = if (cachedUpload != null) {
                     cachedUpload.imageUrl
                 } else {
@@ -132,6 +137,7 @@ class NewPostViewModel(
                         _uiState.value = NewPostUiState.Error("Couldn't upload the photo. Retry")
                         return@launch
                     }
+
                     pendingUpload = PendingUpload(postId, uid, url)
                     url
                 }
@@ -140,7 +146,8 @@ class NewPostViewModel(
                 _uiState.value = NewPostUiState.Saving()
                 try {
                     withContext(Dispatchers.IO) {
-                        postRepository.createPost(
+                        postRepository.createPostWithId(
+                            postId = postId,
                             imageUrl = uploadedUrl,
                             imagePath = storagePath,
                             caption = caption
@@ -154,9 +161,28 @@ class NewPostViewModel(
                     _uiState.value = NewPostUiState.Success
                 } catch (e: Exception) {
                     if (e is CancellationException) throw e
+
+                    val definiteFailure = (e as? PostCreationException)?.commitOutcome ==
+                        PostCreationException.CommitOutcome.NOT_COMMITTED
+                    if (definiteFailure) {
+                        try {
+                            withContext(Dispatchers.IO) {
+                                imageStorage.delete(storagePath)
+                            }
+                            pendingUpload = null
+                        } catch (cleanupError: CancellationException) {
+                            throw cleanupError
+                        } catch (cleanupError: Exception) {
+                            Log.w(TAG, "Couldn't remove photo after a rejected post save", cleanupError)
+                        }
+                    }
                     _uiState.value = NewPostUiState.Error(
-                        message = "Couldn't save the post. Retry",
-                        allowEditing = false
+                        message = if (definiteFailure) {
+                            "Couldn't save the post. Retry or edit your draft"
+                        } else {
+                            "Couldn't confirm whether the post was saved. Retry before editing"
+                        },
+                        allowEditing = definiteFailure
                     )
                 }
             } finally {
@@ -178,8 +204,13 @@ class NewPostViewModel(
             (_uiState.value is NewPostUiState.Idle ||
                 (_uiState.value as? NewPostUiState.Error)?.allowEditing == true)
 
+    private fun canLeaveDraft(): Boolean =
+        !isProcessing() &&
+            shareJob?.isActive != true &&
+            (_uiState.value is NewPostUiState.Idle || _uiState.value is NewPostUiState.Error)
+
     fun onBackPress(onNavigateBack: () -> Unit) {
-        if (!canEditDraft()) return
+        if (!canLeaveDraft()) return
         if (_selectedUri.value != null || _caption.value.isNotBlank()) {
             _showDiscardDialog.value = true
         } else {
@@ -192,7 +223,7 @@ class NewPostViewModel(
     }
 
     fun confirmDiscard(onNavigateBack: () -> Unit) {
-        if (!canEditDraft()) return
+        if (!canLeaveDraft()) return
         _selectedUri.value = null
         _caption.value = ""
         pendingPostId = null
@@ -204,6 +235,10 @@ class NewPostViewModel(
 
     fun clearError() {
         _uiState.value = NewPostUiState.Idle
+    }
+
+    private companion object {
+        const val TAG = "NewPostViewModel"
     }
 
     class Factory(

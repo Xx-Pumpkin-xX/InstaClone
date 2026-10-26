@@ -73,9 +73,9 @@ fun NewPostScreen(
     val caption by viewModel.caption.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
     val showDiscardDialog by viewModel.showDiscardDialog.collectAsState()
-    val canShareDraft = uiState is NewPostUiState.Idle || uiState is NewPostUiState.Error
     val canEditDraft = uiState is NewPostUiState.Idle ||
             (uiState as? NewPostUiState.Error)?.allowEditing == true
+    val canLeaveDraft = uiState is NewPostUiState.Idle || uiState is NewPostUiState.Error
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -121,7 +121,7 @@ fun NewPostScreen(
                 navigationIcon = {
                     IconButton(
                         onClick = { viewModel.onBackPress(onNavigateBack) },
-                        enabled = canEditDraft
+                        enabled = canLeaveDraft
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -132,7 +132,7 @@ fun NewPostScreen(
                 actions = {
                     val isShareEnabled = selectedUri != null &&
                             caption.length <= 2200 &&
-                            canShareDraft
+                            canEditDraft
 
                     TextButton(
                         onClick = { viewModel.share(context) },
@@ -319,24 +319,35 @@ fun NewPostScreen(
 
     // Discard Draft Dialog
     if (showDiscardDialog) {
+        val saveOutcomeIsUnknown =
+            (uiState as? NewPostUiState.Error)?.allowEditing == false
         AlertDialog(
-            onDismissRequest = {
-                if (canEditDraft) viewModel.dismissDiscardDialog()
+            onDismissRequest = { viewModel.dismissDiscardDialog() },
+            title = { Text(if (saveOutcomeIsUnknown) "Leave this post?" else "Discard this post?") },
+            text = {
+                Text(
+                    if (saveOutcomeIsUnknown) {
+                        "The post may already have been shared. Leaving will not delete its photo."
+                    } else {
+                        "If you leave now, your photo and caption will be lost."
+                    }
+                )
             },
-            title = { Text("Discard this post?") },
-            text = { Text("If you leave now, your photo and caption will be lost.") },
             confirmButton = {
                 TextButton(
                     onClick = { viewModel.confirmDiscard(onNavigateBack) },
-                    enabled = canEditDraft
+                    enabled = canLeaveDraft
                 ) {
-                    Text("Discard", color = MaterialTheme.colorScheme.error)
+                    Text(
+                        if (saveOutcomeIsUnknown) "Leave" else "Discard",
+                        color = MaterialTheme.colorScheme.error
+                    )
                 }
             },
             dismissButton = {
                 TextButton(
                     onClick = { viewModel.dismissDiscardDialog() },
-                    enabled = canEditDraft
+                    enabled = canLeaveDraft
                 ) {
                     Text("Cancel")
                 }

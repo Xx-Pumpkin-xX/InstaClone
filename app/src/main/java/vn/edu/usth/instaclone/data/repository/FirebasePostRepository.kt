@@ -6,6 +6,7 @@ import com.google.firebase.Timestamp
 import com.google.firebase.auth.auth
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.QuerySnapshot
 import com.google.firebase.firestore.firestore
@@ -158,62 +159,110 @@ class FirebasePostRepository(
         return if (doc.exists()) doc.toObject(Post::class.java) else null
     }
 
-    override suspend fun createPost(imageUrl: String, imagePath: String, caption: String): String {
-        val currentUser = auth.currentUser
-            ?: throw IllegalStateException("Must be signed in to create a post")
-        require(
-            imagePath.matches(
-                Regex("^images/posts/${Regex.escape(currentUser.uid)}/[A-Za-z0-9_-]+\\.(jpg|png)$")
-            )
-        ) { "Post image path does not belong to its author" }
+    override suspend fun createPost(imageUrl: String, imagePath: String, caption: String): String =
+        createPostWithId(UUID.randomUUID().toString(), imageUrl, imagePath, caption)
 
-        // Reusing the upload path on retry keeps the Firestore write idempotent.
-        val postId = UUID.nameUUIDFromBytes(
-            "${currentUser.uid}:$imagePath".toByteArray(Charsets.UTF_8)
-        ).toString()
+    override suspend fun createPostWithId(
+        postId: String,
+        imageUrl: String,
+        imagePath: String,
+        caption: String
+    ): String {
+        val currentUser = auth.currentUser ?: throw PostCreationException(
+            PostCreationException.CommitOutcome.NOT_COMMITTED,
+            IllegalStateException("Must be signed in to create a post")
+        )
         val postRef = db.collection("posts").document(postId)
         val userRef = db.collection("users").document(currentUser.uid)
-
-        return db.runTransaction { transaction ->
-            val existingPost = transaction.get(postRef)
-            if (existingPost.exists()) {
-                check(
-                    existingPost.getString("authorId") == currentUser.uid &&
-                        existingPost.getString("imagePath") == imagePath &&
-                        existingPost.getString("imageUrl") == imageUrl &&
-                        existingPost.getString("caption") == caption
-                ) { "Post submission has already been used with different content" }
-                return@runTransaction postRef.id
+        return try {
+            if (!postId.matches(Regex("^[A-Za-z0-9_-]+$"))) {
+                throw DefinitePostRejection("Invalid post ID")
+            }
+            if (!imagePath.matches(
+                    Regex("^images/posts/${Regex.escape(currentUser.uid)}/[A-Za-z0-9_-]+\\.(jpg|png)$")
+                )
+            ) {
+                throw DefinitePostRejection("Post image path does not belong to its author")
             }
 
-            val userDoc = transaction.get(userRef)
-            check(userDoc.exists()) { "Member profile not found" }
-            val authorUsername = userDoc.getString("username")
-                ?: throw IllegalStateException("Member username not found")
-            val authorAvatarUrl = userDoc.getString("avatarUrl") ?: ""
-            val postData = hashMapOf(
-                "authorId" to currentUser.uid,
-                "authorUsername" to authorUsername,
-                "authorAvatarUrl" to authorAvatarUrl,
-                "imageUrl" to imageUrl,
-                "imagePath" to imagePath,
-                "caption" to caption,
-                "likeCount" to 0L,
-                "commentCount" to 0L,
-                "createdAt" to FieldValue.serverTimestamp()
-            )
+            db.runTransaction { transaction ->
+                val existingPost = transaction.get(postRef)
+                if (existingPost.exists()) {
+                    if (!(
+                        existingPost.getString("authorId") == currentUser.uid &&
+                            existingPost.getString("imagePath") == imagePath &&
+                            existingPost.getString("imageUrl") == imageUrl &&
+                            existingPost.getString("caption") == caption
+                    )) {
+                        throw DefinitePostRejection(
+                            "Post submission ID is already used by different content"
+                        )
+                    }
+                    return@runTransaction postId
+                }
 
-            transaction.set(postRef, postData)
-            transaction.update(
-                userRef,
-                mapOf(
-                    "postCount" to FieldValue.increment(1),
-                    "counterMutation" to mapOf("kind" to "post", "id" to postRef.id),
-                ),
-            )
-            postRef.id
-        }.await()
+                val userDoc = transaction.get(userRef)
+                if (!userDoc.exists()) throw DefinitePostRejection("Member profile not found")
+                val authorUsername = userDoc.getString("username")
+                    ?: throw DefinitePostRejection("Member username not found")
+                val authorAvatarUrl = userDoc.getString("avatarUrl") ?: ""
+                transaction.set(
+                    postRef,
+                    hashMapOf(
+                        "authorId" to currentUser.uid,
+                        "authorUsername" to authorUsername,
+                        "authorAvatarUrl" to authorAvatarUrl,
+                        "imageUrl" to imageUrl,
+                        "imagePath" to imagePath,
+                        "caption" to caption,
+                        "likeCount" to 0L,
+                        "commentCount" to 0L,
+                        "createdAt" to FieldValue.serverTimestamp()
+                    )
+                )
+                transaction.update(
+                    userRef,
+                    mapOf(
+                        "postCount" to FieldValue.increment(1),
+                        "counterMutation" to mapOf("kind" to "post", "id" to postId),
+                    ),
+                )
+                postId
+            }.await()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            val outcome = if (e.isDefinitePostRejection()) {
+                PostCreationException.CommitOutcome.NOT_COMMITTED
+            } else {
+                PostCreationException.CommitOutcome.UNKNOWN
+            }
+            throw PostCreationException(outcome, e)
+        }
     }
+
+    private fun Throwable.isDefinitePostRejection(): Boolean {
+        var cause: Throwable? = this
+        while (cause != null) {
+            if (cause is DefinitePostRejection) {
+                return true
+            }
+            if (cause is FirebaseFirestoreException) {
+                return cause.code in setOf(
+                    FirebaseFirestoreException.Code.PERMISSION_DENIED,
+                    FirebaseFirestoreException.Code.UNAUTHENTICATED,
+                    FirebaseFirestoreException.Code.INVALID_ARGUMENT,
+                    FirebaseFirestoreException.Code.FAILED_PRECONDITION,
+                    FirebaseFirestoreException.Code.NOT_FOUND,
+                    FirebaseFirestoreException.Code.ALREADY_EXISTS
+                )
+            }
+            cause = cause.cause
+        }
+        return false
+    }
+
+    private class DefinitePostRejection(message: String) : IllegalStateException(message)
 
     override suspend fun deletePost(postId: String) =
         deletionMutex.withLock { deletePostLocked(postId) }
