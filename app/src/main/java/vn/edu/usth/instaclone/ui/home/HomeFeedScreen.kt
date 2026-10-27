@@ -2,6 +2,7 @@ package vn.edu.usth.instaclone.ui.home
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,8 +20,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.AlertDialog
@@ -31,10 +32,10 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
-import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -51,15 +52,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import kotlinx.coroutines.delay
 import vn.edu.usth.instaclone.R
 import vn.edu.usth.instaclone.data.AppContainer
 import vn.edu.usth.instaclone.data.model.Post
@@ -291,6 +295,18 @@ fun PostItem(
 ) {
     var showMenu by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showLikeHeart by remember { mutableStateOf(false) }
+
+    // Alias so the semantics `onClick { }` below doesn't clash with the parameter name.
+    val openPost = onClick
+
+    // Hide the double-tap heart after a short moment.
+    LaunchedEffect(showLikeHeart) {
+        if (showLikeHeart) {
+            delay(600)
+            showLikeHeart = false
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -372,6 +388,7 @@ fun PostItem(
 
         // Post Image rendered with Coil AsyncImage; the grey surfaceVariant
         // background doubles as the placeholder when the photo cannot load.
+        // Single tap opens the post, double tap likes it (FR: "double-tap the photo").
         val postPhotoDescription = stringResource(R.string.home_post_photo)
         Box(
             modifier = Modifier
@@ -380,8 +397,17 @@ fun PostItem(
                 .background(MaterialTheme.colorScheme.surfaceVariant)
                 .semantics {
                     if (post.imageUrl.isBlank()) contentDescription = postPhotoDescription
+                    onClick { openPost(); true }
                 }
-                .clickable { onClick() }
+                .pointerInput(isLiked) {
+                    detectTapGestures(
+                        onTap = { openPost() },
+                        onDoubleTap = {
+                            if (!isLiked) onLikeClick() // double-tap only likes, never unlikes
+                            showLikeHeart = true
+                        }
+                    )
+                }
         ) {
             if (post.imageUrl.isNotBlank()) {
                 AsyncImage(
@@ -389,6 +415,17 @@ fun PostItem(
                     contentDescription = postPhotoDescription,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
+                )
+            }
+
+            if (showLikeHeart) {
+                Icon(
+                    imageVector = Icons.Filled.Favorite,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .size(96.dp)
                 )
             }
         }
