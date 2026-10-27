@@ -51,13 +51,13 @@ class FakeChatRepository(
         return all.subList(maxOf(0, index - limit.toInt()), index)
     }
 
-    override suspend fun sendMessage(other: User, text: String) {
+    override suspend fun sendMessage(other: User, text: String, messageId: String) {
         delay(300)
         if (text.contains("#fail")) throw IOException("Fake failure for testing Retry")
         val me = myId()
         val id = conversationId(me, other.id)
         val now = Timestamp.now()
-        flowFor(id).update { it + Message(id = UUID.randomUUID().toString(), senderId = me, text = text, createdAt = now) }
+        flowFor(id).update { it + Message(id = messageId, senderId = me, text = text, createdAt = now) }
         conversationsFlow.update { list ->
             val old = list.firstOrNull { it.id == id }
             val updated = (old ?: Conversation(
