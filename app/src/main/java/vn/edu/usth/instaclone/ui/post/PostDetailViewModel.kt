@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import vn.edu.usth.instaclone.data.AppContainer
 import vn.edu.usth.instaclone.data.model.Comment
 import vn.edu.usth.instaclone.data.model.Post
@@ -82,8 +83,12 @@ class PostDetailViewModel(
         viewModelScope.launch {
             try {
                 // Step 1: save the comment. Only a failure here means "not posted".
+                // withTimeout: if the network is down the save never finishes, so give up
+                // after SEND_TIMEOUT_MS instead of leaving the screen stuck in "sending".
                 val saved = try {
-                    commentRepo.addComment(postId, content)
+                    withTimeout(SEND_TIMEOUT_MS) {
+                        commentRepo.addComment(postId, content)
+                    }
                     true
                 } catch (e: Exception) {
                     _errorMessage.value = "Couldn't post your comment. Retry"
@@ -132,6 +137,7 @@ class PostDetailViewModel(
 
     companion object {
         private const val PAGE_SIZE = 5
+        private const val SEND_TIMEOUT_MS = 10_000L
         const val MAX_COMMENT_LENGTH = 500
     }
 }
