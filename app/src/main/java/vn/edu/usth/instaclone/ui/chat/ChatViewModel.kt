@@ -69,7 +69,7 @@ class ChatViewModel(
         val sent = messages.values
             .sortedWith(compareBy<Message, Timestamp?>(nullsLast()) { it.createdAt })
             .map { ChatBubble(key = it.id, text = it.text, isMine = it.senderId == myId) }
-        val notYetSent = waiting.map {
+        val notYetSent = waiting.filterNot { it.localId in messages }.map {
             ChatBubble(
                 key = it.localId,
                 text = it.text,
@@ -127,7 +127,7 @@ class ChatViewModel(
             try {
                 // Offline, Firestore would wait forever; after 10 s we show "Not sent" instead (UC-14 4a).
                 withTimeout(SEND_TIMEOUT_MS) {
-                    chatRepository.sendMessage(User(id = otherUserId, username = base.value.otherUsername), text)
+                    chatRepository.sendMessage(User(id = otherUserId, username = base.value.otherUsername), text, localId)
                 }
                 pending.update { list -> list.filterNot { it.localId == localId } }
             } catch (e: Exception) {
