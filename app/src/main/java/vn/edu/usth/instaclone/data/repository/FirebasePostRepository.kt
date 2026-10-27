@@ -9,7 +9,9 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.QuerySnapshot
+import com.google.firebase.firestore.Source
 import com.google.firebase.firestore.firestore
+import com.google.firebase.storage.storage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -24,6 +26,10 @@ class FirebasePostRepository(
     private val db = Firebase.firestore
     private val auth = Firebase.auth
     private val deletionMutex = Mutex()
+
+    init {
+        Firebase.storage.maxUploadRetryTimeMillis = STORAGE_MAX_RETRY_TIME_MILLIS
+    }
 
     /**
      * Returns the newest posts from everybody.
@@ -299,7 +305,7 @@ class FirebasePostRepository(
 
         val postRef = db.collection("posts").document(postId)
         val cleanupRef = db.collection("postDeletionCleanup").document(postId)
-        val postDoc = postRef.get().await()
+        val postDoc = postRef.get(Source.SERVER).await()
         val cleanupSnapshot = if (postDoc.exists()) {
             null
         } else {
@@ -385,6 +391,8 @@ class FirebasePostRepository(
     }
 
     private companion object {
+        const val STORAGE_MAX_RETRY_TIME_MILLIS = 10_000L
+
         const val MAX_BATCH_WRITES = 500
 
         /** A Firestore `in` query accepts at most 30 values (A-08). */
