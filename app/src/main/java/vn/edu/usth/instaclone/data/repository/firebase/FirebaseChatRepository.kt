@@ -3,6 +3,7 @@ package vn.edu.usth.instaclone.data.repository.firebase
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
 import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.MetadataChanges
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.firestore
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -67,13 +68,17 @@ class FirebaseChatRepository : ChatRepository {
         val registration = conversationsRef.document(conversationId).collection("messages")
             .orderBy("createdAt", Query.Direction.DESCENDING)
             .limit(limit)
-            .addSnapshotListener { snapshot, error ->
+            .addSnapshotListener(MetadataChanges.INCLUDE) { snapshot, error ->
                 if (error != null) {
                     close(error)
                     return@addSnapshotListener
                 }
-                // Newest first from the query; the screen wants oldest first.
-                trySend(snapshot?.toObjects(Message::class.java)?.reversed() ?: emptyList())
+                // Only messages the server has confirmed. Offline ones show as "Not sent" from the ViewModel.
+                val confirmed = snapshot?.documents
+                    ?.filterNot { it.metadata.hasPendingWrites() }
+                    ?.mapNotNull { it.toObject(Message::class.java) }
+                    ?.reversed() ?: emptyList()
+                trySend(confirmed)
             }
         awaitClose { registration.remove() }
     }
@@ -89,10 +94,10 @@ class FirebaseChatRepository : ChatRepository {
         return snapshot.toObjects(Message::class.java).reversed()
     }
 
-    override suspend fun sendMessage(other: User, text: String) {
+    override suspend fun sendMessage(other: User, text: String, messageId: String) {
         val me = myId()
         val conversationRef = conversationsRef.document(conversationId(me, other.id))
-        val messageRef = conversationRef.collection("messages").document()
+        val messageRef = conversationRef.collection("messages").document(messageId)
 
         // The rules require BOTH usernames, exactly as stored in users/{uid}.
         val myName = username(me)
