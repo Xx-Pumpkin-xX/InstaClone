@@ -164,7 +164,7 @@ private fun MessageBubble(bubble: ChatBubble, onRetry: () -> Unit) {
         }
         if (bubble.status == SendStatus.FAILED) {
             Text(
-                "Not sent · Tap to retry",
+                "Not sent. Tap to retry",
                 color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.labelSmall,
                 modifier = Modifier.clickable(onClick = onRetry).padding(top = 2.dp, end = 4.dp),
