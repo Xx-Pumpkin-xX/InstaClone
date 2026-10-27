@@ -10,7 +10,7 @@ ChatRepository {
     fun conversations(): Flow<List<Conversation>>
     fun messages(conversationId: String, limit: Long = 30): Flow<List<Message>>
     suspend fun olderMessages(conversationId: String, before: Message, limit: Long = 30): List<Message>
-    suspend fun sendMessage(other: User, text: String)
+    suspend fun sendMessage(other: User, text: String, messageId: String)
     fun conversationId(uidA: String, uidB: String): String =
         listOf(uidA, uidB).sorted().joinToString("_")
 }
