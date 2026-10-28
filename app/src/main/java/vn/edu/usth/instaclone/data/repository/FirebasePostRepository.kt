@@ -11,12 +11,14 @@ import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.QuerySnapshot
 import com.google.firebase.firestore.Source
 import com.google.firebase.firestore.firestore
-import com.google.firebase.storage.storage
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withTimeout
 import vn.edu.usth.instaclone.data.model.Post
+import java.io.IOException
 import java.util.UUID
 
 class FirebasePostRepository(
@@ -26,10 +28,6 @@ class FirebasePostRepository(
     private val db = Firebase.firestore
     private val auth = Firebase.auth
     private val deletionMutex = Mutex()
-
-    init {
-        Firebase.storage.maxUploadRetryTimeMillis = STORAGE_MAX_RETRY_TIME_MILLIS
-    }
 
     /**
      * Returns the newest posts from everybody.
@@ -335,22 +333,34 @@ class FirebasePostRepository(
 
             val userRef = db.collection("users").document(currentUser.uid)
             try {
-                withTimeout(10_000L) {
-                    db.runTransaction { tx ->
-                        val fresh = tx.get(postRef)
-                        if (!fresh.exists()) return@runTransaction null
-                        tx.delete(postRef)
-                        tx.update(userRef, mapOf(
-                            "postCount" to FieldValue.increment(-1),
-                            "counterMutation" to mapOf("kind" to "post", "id" to postId),
-                        ))
-                        tx.set(cleanupRef, mapOf("authorId" to currentUser.uid, "imagePath" to imagePath))
-                        null
+                // A transaction is never queued offline (a batch is), so a delete made
+                // without network can't silently run later when the network comes back.
+                withTimeout(DELETE_TIMEOUT_MILLIS) {
+                    db.runTransaction<Unit> { tx ->
+                        if (tx.get(postRef).exists()) {
+                            tx.delete(postRef)
+                            tx.update(
+                                userRef,
+                                mapOf(
+                                    "postCount" to FieldValue.increment(-1),
+                                    "counterMutation" to mapOf("kind" to "post", "id" to postId),
+                                ),
+                            )
+                            tx.set(
+                                cleanupRef,
+                                mapOf(
+                                    "authorId" to currentUser.uid,
+                                    "imagePath" to imagePath,
+                                ),
+                            )
+                        }
                     }.await()
                 }
             } catch (e: TimeoutCancellationException) {
-                throw IOException("Delete timed out", e)   // must not escape as a CancellationException
+                // Must not escape as a CancellationException, or the ViewModel would rethrow it silently.
+                throw IOException("Delete timed out", e)
             }
+        }
 
         try {
             val cleanup = if (postDoc.exists()) {
@@ -390,7 +400,7 @@ class FirebasePostRepository(
     }
 
     private companion object {
-        const val STORAGE_MAX_RETRY_TIME_MILLIS = 10_000L
+        const val DELETE_TIMEOUT_MILLIS = 10_000L
 
         const val MAX_BATCH_WRITES = 500
 
