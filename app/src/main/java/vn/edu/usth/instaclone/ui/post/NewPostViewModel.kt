@@ -129,9 +129,12 @@ class NewPostViewModel(
                     // Step 2: Upload photo to Firebase Storage
                     _uiState.value = NewPostUiState.Uploading()
                     val url = try {
-                        withContext(Dispatchers.IO) {
-                            imageStorage.upload(storagePath, compressedBytes)
+                        withTimeout(25_000L) {
+                            withContext(Dispatchers.IO) { imageStorage.upload(storagePath, compressedBytes) }
                         }
+                    } catch (e: TimeoutCancellationException) {
+                        _uiState.value = NewPostUiState.Error("Couldn't upload the photo. Retry")
+                        return@launch
                     } catch (e: Exception) {
                         if (e is CancellationException) throw e
                         _uiState.value = NewPostUiState.Error("Couldn't upload the photo. Retry")
