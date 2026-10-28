@@ -4,9 +4,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -36,8 +38,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -53,14 +55,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import vn.edu.usth.instaclone.R
 import vn.edu.usth.instaclone.data.model.Post
@@ -111,6 +116,8 @@ fun ProfileScreen(
                 Text(
                     text = state.user?.username ?: stringResource(R.string.profile_title),
                     fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             },
             navigationIcon = {
@@ -262,6 +269,7 @@ private fun ProfileHeader(
     var menuExpanded by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+        // On narrow screens or large fonts, stats go under the avatar instead of beside it (checklist #14, #16).
         BoxWithConstraints(Modifier.fillMaxWidth()) {
             val compact = maxWidth < 360.dp || LocalDensity.current.fontScale > 1.3f
             val stats: @Composable RowScope.() -> Unit = {
@@ -271,19 +279,18 @@ private fun ProfileHeader(
             }
             if (compact) {
                 Column {
-                    AsyncImage(/* same as now */ modifier = Modifier.size(72.dp).clip(CircleShape))
+                    ProfileAvatar(user = user, size = 72.dp)
                     Spacer(Modifier.height(12.dp))
                     Row(Modifier.fillMaxWidth(), content = stats)
                 }
             } else {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    AsyncImage(/* same as now */)
+                    ProfileAvatar(user = user, size = 96.dp)
                     Spacer(Modifier.width(20.dp))
                     Row(Modifier.weight(1f), content = stats)
                 }
             }
-         }
-     }
+        }
 
         Spacer(modifier = Modifier.height(12.dp))
         Text(
@@ -313,7 +320,7 @@ private fun ProfileHeader(
         ) {
             if (isOwnProfile) {
                 Button(onClick = onEditProfile, modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.profile_edit))
+                    Text(stringResource(R.string.profile_edit), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 Box {
                     IconButton(onClick = { menuExpanded = true }) {
@@ -366,12 +373,14 @@ private fun ProfileHeader(
                                 } else {
                                     R.string.profile_follow
                                 }
-                            )
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                 }
                 OutlinedButton(onClick = onMessage, modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.profile_message))
+                    Text(stringResource(R.string.profile_message), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
@@ -379,17 +388,37 @@ private fun ProfileHeader(
 }
 
 @Composable
-private fun Stat(value: Long, label: String) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+private fun ProfileAvatar(user: User, size: Dp) {
+    AsyncImage(
+        model = user.avatarUrl,
+        contentDescription = stringResource(R.string.profile_avatar, user.username),
+        contentScale = ContentScale.Crop,
+        // The placeholder already paints the grey circle, so no extra background (less overdraw, #17).
+        placeholder = ColorPainter(MaterialTheme.colorScheme.surfaceVariant),
+        error = ColorPainter(MaterialTheme.colorScheme.surfaceVariant),
+        modifier = Modifier
+            .size(size)
+            .clip(CircleShape),
+    )
+}
+
+@Composable
+private fun Stat(value: Long, label: String, modifier: Modifier = Modifier) {
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             text = value.toString(),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
         Text(
             text = label,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
         )
     }
 }
