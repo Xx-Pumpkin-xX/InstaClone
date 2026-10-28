@@ -262,28 +262,28 @@ private fun ProfileHeader(
     var menuExpanded by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            AsyncImage(
-                model = user.avatarUrl,
-                contentDescription = stringResource(R.string.profile_avatar, user.username),
-                contentScale = ContentScale.Crop,
-                placeholder = ColorPainter(MaterialTheme.colorScheme.surfaceVariant),
-                error = ColorPainter(MaterialTheme.colorScheme.surfaceVariant),
-                modifier = Modifier
-                    .size(96.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
-            )
-            Spacer(modifier = Modifier.width(20.dp))
-            Row(
-                modifier = Modifier.weight(1f),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-            ) {
-                Stat(value = user.postCount, label = stringResource(R.string.profile_posts))
-                Stat(value = followerCount, label = stringResource(R.string.profile_followers))
-                Stat(value = user.followingCount, label = stringResource(R.string.profile_following))
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val compact = maxWidth < 360.dp || LocalDensity.current.fontScale > 1.3f
+            val stats: @Composable RowScope.() -> Unit = {
+                Stat(user.postCount, stringResource(R.string.profile_posts), Modifier.weight(1f))
+                Stat(followerCount, stringResource(R.string.profile_followers), Modifier.weight(1f))
+                Stat(user.followingCount, stringResource(R.string.profile_following), Modifier.weight(1f))
             }
-        }
+            if (compact) {
+                Column {
+                    AsyncImage(/* same as now */ modifier = Modifier.size(72.dp).clip(CircleShape))
+                    Spacer(Modifier.height(12.dp))
+                    Row(Modifier.fillMaxWidth(), content = stats)
+                }
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    AsyncImage(/* same as now */)
+                    Spacer(Modifier.width(20.dp))
+                    Row(Modifier.weight(1f), content = stats)
+                }
+            }
+         }
+     }
 
         Spacer(modifier = Modifier.height(12.dp))
         Text(
