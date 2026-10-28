@@ -20,7 +20,7 @@ val bottomTabs = listOf(
     BottomTab(Routes.HOME, "Home", Icons.Filled.Home),
     BottomTab(Routes.SEARCH, "Search", Icons.Filled.Search),
     BottomTab(Routes.NEW_POST, "Post", Icons.Filled.AddCircle),
-    BottomTab(Routes.CHAT_LIST, "Messages", Icons.AutoMirrored.Filled.Send),
+    BottomTab(Routes.CHAT_LIST, "Chat", Icons.AutoMirrored.Filled.Send),
     BottomTab(Routes.MY_PROFILE, "Profile", Icons.Filled.Person),
 )
 
@@ -38,7 +38,8 @@ fun BottomBar(navController: NavController, currentRoute: String?) {
                     }
                 },
                 icon = {Icon(tab.icon, contentDescription = tab.label)},
-                label = { Text(tab.label) },
+                label = { Text(tab.label, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis) },
+                alwaysShowLabel = LocalDensity.current.fontScale < 1.3f,
             )
         }
     }
