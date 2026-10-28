@@ -334,24 +334,23 @@ class FirebasePostRepository(
             }
 
             val userRef = db.collection("users").document(currentUser.uid)
-            val batch = db.batch()
-            batch.delete(postRef)
-            batch.update(
-                userRef,
-                mapOf(
-                    "postCount" to FieldValue.increment(-1),
-                    "counterMutation" to mapOf("kind" to "post", "id" to postId),
-                ),
-            )
-            batch.set(
-                cleanupRef,
-                mapOf(
-                    "authorId" to currentUser.uid,
-                    "imagePath" to imagePath,
-                ),
-            )
-            batch.commit().await()
-        }
+            try {
+                withTimeout(10_000L) {
+                    db.runTransaction { tx ->
+                        val fresh = tx.get(postRef)
+                        if (!fresh.exists()) return@runTransaction null
+                        tx.delete(postRef)
+                        tx.update(userRef, mapOf(
+                            "postCount" to FieldValue.increment(-1),
+                            "counterMutation" to mapOf("kind" to "post", "id" to postId),
+                        ))
+                        tx.set(cleanupRef, mapOf("authorId" to currentUser.uid, "imagePath" to imagePath))
+                        null
+                    }.await()
+                }
+            } catch (e: TimeoutCancellationException) {
+                throw IOException("Delete timed out", e)   // must not escape as a CancellationException
+            }
 
         try {
             val cleanup = if (postDoc.exists()) {
